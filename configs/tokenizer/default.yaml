@@ -1,0 +1,6 @@
+﻿tokenizer:
+  name: aviy-tokenizer
+  vocabulary_size: 16384
+  normalization: unicode
+  multilingual: true
+  initial_priority: english

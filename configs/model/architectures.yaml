@@ -1,0 +1,14 @@
+architectures:
+  default: transformer
+  reference_families:
+    - transformer
+    - rnn
+    - gru
+    - lstm
+    - ssm
+    - rwkv
+    - cnn
+    - moe
+    - gnn
+    - hybrid
+  status: initial_reference_implementations

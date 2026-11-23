@@ -1,0 +1,6 @@
+﻿# Install the project using:
+# python -m pip install -e ".[dev]"
+# PyTorch is installed separately for the target compute environment.
+-e .[dev]
+
+# Numerical and neural-network runtime dependencies are declared in pyproject.toml.

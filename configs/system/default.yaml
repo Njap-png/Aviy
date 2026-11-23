@@ -1,0 +1,6 @@
+﻿system:
+  name: aviy
+  version: 0.1.0
+  environment: development
+  logging_level: INFO
+  offline_first: true

@@ -1,0 +1,242 @@
+"""Educational byte-level BPE tokenizer trained only on supplied corpus data."""
+from __future__ import annotations
+
+import json
+import unicodedata
+from collections import Counter
+from collections.abc import Iterable
+from itertools import pairwise
+from pathlib import Path
+
+from aviy.data.pipeline import PreparedDataset
+
+
+class ByteBPETokenizer:
+    def __init__(self, merges: list[tuple[int, int]] | None = None) -> None:
+        self.merges = list(merges or [])
+        seen: set[tuple[int, int]] = set()
+        for index, pair in enumerate(self.merges):
+            if (
+                not isinstance(pair, tuple)
+                or len(pair) != 2
+                or any(
+                    isinstance(token, bool)
+                    or not isinstance(token, int)
+                    or token < 0
+                    or token >= 256 + index
+                    for token in pair
+                )
+            ):
+                raise ValueError(f"Invalid BPE merge at index {index}")
+            if pair in seen:
+                raise ValueError(f"Duplicate BPE merge at index {index}")
+            seen.add(pair)
+        self.ranks = {pair: index for index, pair in enumerate(self.merges)}
+        self.vocabulary_size = 256 + len(self.merges)
+
+    @staticmethod
+    def normalize(text: str) -> str:
+        if not isinstance(text, str):
+            raise TypeError("Tokenizer input must be a string")
+        return " ".join(unicodedata.normalize("NFC", text).split())
+
+    @classmethod
+    def train(
+        cls,
+        texts: Iterable[str],
+        *,
+        vocabulary_size: int = 16384,
+        minimum_pair_frequency: int = 2,
+    ) -> ByteBPETokenizer:
+        if vocabulary_size < 256:
+            raise ValueError("Byte-level vocabulary must contain at least 256 tokens")
+        if minimum_pair_frequency < 1:
+            raise ValueError("minimum_pair_frequency must be positive")
+
+        sequences = [
+            list(cls.normalize(text).encode("utf-8"))
+            for text in texts
+            if cls.normalize(text)
+        ]
+        if not sequences:
+            raise ValueError("Tokenizer training requires non-empty approved text")
+
+        merges: list[tuple[int, int]] = []
+        next_id = 256
+
+        while next_id < vocabulary_size:
+            counts: Counter[tuple[int, int]] = Counter()
+            for sequence in sequences:
+                counts.update(pairwise(sequence))
+
+            if not counts:
+                break
+
+            pair, frequency = counts.most_common(1)[0]
+            if frequency < minimum_pair_frequency:
+                break
+
+            merged_id = next_id
+            next_id += 1
+            merges.append(pair)
+
+            updated = []
+            for sequence in sequences:
+                result = []
+                index = 0
+                while index < len(sequence):
+                    if (
+                        index + 1 < len(sequence)
+                        and (sequence[index], sequence[index + 1]) == pair
+                    ):
+                        result.append(merged_id)
+                        index += 2
+                    else:
+                        result.append(sequence[index])
+                        index += 1
+                updated.append(result)
+            sequences = updated
+
+        return cls(merges)
+
+    @classmethod
+    def train_from_prepared_dataset(
+        cls,
+        dataset: PreparedDataset,
+        *,
+        vocabulary_size: int = 16384,
+        minimum_pair_frequency: int = 2,
+    ) -> ByteBPETokenizer:
+        """Train only from the training split of a passing dataset audit."""
+        if not dataset.audit.passed:
+            raise ValueError("Tokenizer training requires a passing dataset audit")
+        training_texts = [
+            record.text for record in dataset.records if record.split == "train"
+        ]
+        if not training_texts:
+            raise ValueError("The audited dataset has no training-split records")
+        return cls.train(
+            training_texts,
+            vocabulary_size=vocabulary_size,
+            minimum_pair_frequency=minimum_pair_frequency,
+        )
+
+    def encode(self, text: str) -> list[int]:
+        sequence = list(self.normalize(text).encode("utf-8"))
+        while len(sequence) > 1:
+            candidates = [
+                (self.ranks[(sequence[i], sequence[i + 1])], i)
+                for i in range(len(sequence) - 1)
+                if (sequence[i], sequence[i + 1]) in self.ranks
+            ]
+            if not candidates:
+                break
+            _, index = min(candidates)
+            pair = (sequence[index], sequence[index + 1])
+            merged_id = 256 + self.ranks[pair]
+            sequence[index:index + 2] = [merged_id]
+        return sequence
+
+    def decode(self, token_ids: Iterable[int]) -> str:
+        pieces: dict[int, bytes] = {index: bytes([index]) for index in range(256)}
+        for index, (left, right) in enumerate(self.merges):
+            pieces[256 + index] = pieces[left] + pieces[right]
+        try:
+            raw = b"".join(pieces[int(token)] for token in token_ids)
+        except (KeyError, ValueError) as exc:
+            raise ValueError("Unknown tokenizer token ID") from exc
+        return raw.decode("utf-8")
+
+    def measure(self, texts: Iterable[str]) -> dict[str, float | int]:
+        words = 0
+        tokens = 0
+        characters = 0
+        round_trip = 0
+        covered_characters = 0
+        total_characters = 0
+        covered_bytes = 0
+        total_bytes = 0
+        samples = 0
+        for text in texts:
+            normalized = self.normalize(text)
+            if not normalized:
+                continue
+            ids = self.encode(normalized)
+            decoded = self.decode(ids)
+            expected_bytes = normalized.encode("utf-8")
+            decoded_bytes = decoded.encode("utf-8")
+            total_characters += len(normalized)
+            total_bytes += len(expected_bytes)
+            if decoded == normalized:
+                covered_characters += len(normalized)
+                covered_bytes += len(expected_bytes)
+                round_trip += 1
+            else:
+                # Byte-level tokenization has no unknown-token ID. Count only
+                # characters that survive the actual encode/decode round trip.
+                matched = 0
+                for expected, actual in zip(normalized, decoded):
+                    if expected != actual:
+                        break
+                    matched += 1
+                covered_characters += matched
+                covered_bytes += len(decoded_bytes)
+            words += len(normalized.split())
+            tokens += len(ids)
+            characters += len(normalized)
+            samples += 1
+        return {
+            "samples": samples,
+            "words": words,
+            "tokens": tokens,
+            "characters": characters,
+            "fertility_tokens_per_word": tokens / max(words, 1),
+            "characters_per_token": characters / max(tokens, 1),
+            "character_coverage_rate": (
+                covered_characters / total_characters if total_characters else 0.0
+            ),
+            "byte_coverage_rate": (
+                min(covered_bytes, total_bytes) / total_bytes if total_bytes else 0.0
+            ),
+            "unknown_characters": total_characters - covered_characters,
+            "round_trip_rate": round_trip / max(samples, 1),
+        }
+
+    def save(self, path: str | Path) -> None:
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            json.dumps(
+                {"format": "aviy-byte-bpe-v1", "merges": self.merges},
+                ensure_ascii=True,
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def load(cls, path: str | Path) -> ByteBPETokenizer:
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Tokenizer file is unreadable or invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("Tokenizer payload must be a JSON object")
+        if payload.get("format") != "aviy-byte-bpe-v1":
+            raise ValueError("Unsupported tokenizer format")
+        raw_merges = payload.get("merges")
+        if not isinstance(raw_merges, list):
+            raise ValueError("Tokenizer merges must be a list")
+        merges: list[tuple[int, int]] = []
+        for index, pair in enumerate(raw_merges):
+            if (
+                not isinstance(pair, list)
+                or len(pair) != 2
+                or any(
+                    isinstance(token, bool) or not isinstance(token, int)
+                    for token in pair
+                )
+            ):
+                raise ValueError(f"Invalid serialized BPE merge at index {index}")
+            merges.append((pair[0], pair[1]))
+        return cls(merges)

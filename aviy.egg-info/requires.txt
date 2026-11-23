@@ -1,0 +1,10 @@
+pydantic<3,>=2.7
+PyYAML<7,>=6
+typer<1,>=0.12
+fastapi<1,>=0.110
+uvicorn<1,>=0.29
+
+[dev]
+pytest<9,>=8
+ruff<1,>=0.5
+pyright<2,>=1.1

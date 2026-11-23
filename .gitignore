@@ -1,0 +1,32 @@
+﻿.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.pyright/
+.mypy_cache/
+.env
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Large or generated assets
+datasets/*
+!datasets/.gitkeep
+outputs/*
+!outputs/.gitkeep
+checkpoints/*
+!checkpoints/.gitkeep
+experiments/*
+!experiments/.gitkeep
+notebooks/.ipynb_checkpoints/
+
+# Local reports and caches
+*.safetensors
+*.pt
+*.pth
+*.bin
+*.onnx
+*.gguf

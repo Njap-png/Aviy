@@ -1,0 +1,32 @@
+{
+  "config": {
+    "vocab_size": 16384,
+    "context_length": 1024,
+    "d_model": 512,
+    "n_layers": 8,
+    "n_heads": 8,
+    "d_ff": 2688,
+    "dropout": 0.0,
+    "tie_embeddings": true,
+    "initialization": "random",
+    "pretrained_weights": false
+  },
+  "parameters": 49816064,
+  "trainable_parameters": 49816064,
+  "initialization": "random",
+  "pretrained_weights_loaded": false,
+  "tied_embeddings": true,
+  "environment": {
+    "python_torch": "2.15.0+cpu",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "device": "cpu"
+  },
+  "verification": {
+    "model_instantiated_from_current_config": true,
+    "weights_initialized_by_model_constructor": true,
+    "pretrained_weights_loaded": false,
+    "parameter_count_measured_from_live_model": true,
+    "tokenizer_compatibility_tests": "included in test suite"
+  }
+}

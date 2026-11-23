@@ -1,0 +1,7 @@
+﻿security:
+  authentication_required: true
+  least_privilege: true
+  audit_logging: true
+  sandbox_execution: true
+  protected_recovery: true
+  autonomous_privilege_escalation: false
