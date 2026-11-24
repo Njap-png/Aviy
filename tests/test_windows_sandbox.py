@@ -1,6 +1,7 @@
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -85,7 +86,7 @@ def test_windows_executor_rejects_python_callable_tool():
     executor = WindowsSandboxExecutor(executable="unused")
     tool = ToolDefinition("python", lambda args: {}, "permission")
     with pytest.raises(TypeError, match="SandboxToolDefinition"):
-        executor.execute(tool, {}, timeout_seconds=1)
+        executor.execute(cast(Any, tool), {}, timeout_seconds=1)
 
 
 def test_configuration_disables_network_clipboard_and_vgpu(tmp_path):

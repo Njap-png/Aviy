@@ -1,4 +1,5 @@
 import json
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -71,7 +72,7 @@ def test_research_endpoint_queues_job_without_running_it():
     app = create_app(
         lambda token: token == "ok",
         research_handler=lambda payload: calls.append(payload),
-        research_scheduler=scheduler,
+        research_scheduler=cast(Any, scheduler),
     )
     response = TestClient(app).post(
         "/v1/research/requests",
@@ -97,7 +98,7 @@ def test_research_endpoint_reports_queue_rejection():
     app = create_app(
         lambda token: token == "ok",
         research_handler=lambda payload: payload,
-        research_scheduler=scheduler,
+        research_scheduler=cast(Any, scheduler),
     )
     response = TestClient(app).post(
         "/v1/research/requests",

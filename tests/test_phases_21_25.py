@@ -162,7 +162,9 @@ def test_resource_scheduler_accepts_and_runs_within_quota():
     monitor = ResourceMonitor(lambda: snapshot())
     scheduler = WorkloadScheduler(ResourceQuota(), monitor)
     assert scheduler.submit("job-1", lambda: 42)["accepted"]
-    assert scheduler.run_next()["result"] == 42
+    completed = scheduler.run_next()
+    assert completed is not None
+    assert completed["result"] == 42
     assert scheduler.report()["completed"] == 1
 
 
@@ -190,8 +192,12 @@ def test_resource_scheduler_isolates_job_failures():
     scheduler = WorkloadScheduler(ResourceQuota(), ResourceMonitor(lambda: snapshot()))
     scheduler.submit("bad", lambda: 1 / 0)
     scheduler.submit("good", lambda: "ok")
-    assert scheduler.run_next()["status"] == "failed"
-    assert scheduler.run_next()["result"] == "ok"
+    failed = scheduler.run_next()
+    assert failed is not None
+    assert failed["status"] == "failed"
+    completed = scheduler.run_next()
+    assert completed is not None
+    assert completed["result"] == "ok"
 
 
 def test_resource_snapshot_rejects_invalid_values():

@@ -70,7 +70,11 @@ def test_scheduler_state_survives_checkpoint_resume(tmp_path):
     assert resumed["resumed_from_step"] == 2
     assert resumed["global_step"] == 4
     assert resumed["scheduler_enabled"] is True
-    assert resumed["final_learning_rate"] <= first["final_learning_rate"]
+    resumed_lr = resumed["final_learning_rate"]
+    first_lr = first["final_learning_rate"]
+    assert isinstance(resumed_lr, (int, float))
+    assert isinstance(first_lr, (int, float))
+    assert resumed_lr <= first_lr
 
 
 def test_scheduler_options_require_total_steps():
@@ -100,7 +104,9 @@ def test_benchmark_reports_repeatability_separately_from_accuracy():
     assert report["accuracy"] == 0.0
     assert report["repeatability"] == 0.0
     assert report["repeatability_runs"] == 2
-    assert report["metric_note"].find("repeatability") >= 0
+    metric_note = report["metric_note"]
+    assert isinstance(metric_note, str)
+    assert "repeatability" in metric_note
 
 
 def test_benchmark_rejects_invalid_repeatability_count():

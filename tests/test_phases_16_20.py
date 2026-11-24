@@ -1,4 +1,5 @@
 import hashlib
+from typing import Any, cast
 
 import pytest
 
@@ -98,6 +99,7 @@ def test_programming_specialist_uses_static_analysis_only():
     result = ProgrammingSpecialist().analyze(
         "def greet(name):\n    return 'Hello ' + name\n"
     )
+    assert result.metadata is not None
     assert result.metadata["valid_syntax"] is True
     assert result.metadata["executed"] is False
     assert result.metadata["functions"] == 1
@@ -105,13 +107,15 @@ def test_programming_specialist_uses_static_analysis_only():
 
 def test_programming_specialist_flags_dangerous_calls():
     result = ProgrammingSpecialist().analyze("value = eval('1 + 1')\n")
-    assert "eval" in result.metadata["review_required_calls"]
+    assert result.metadata is not None
+    assert "eval" in cast(list[str], result.metadata["review_required_calls"])
     assert result.metadata["executed"] is False
 
 
 def test_science_specialist_does_not_claim_unverified_facts():
     result = ScienceSpecialist().analyze("Does this experiment prove the hypothesis?")
     assert result.evidence_required is True
+    assert result.metadata is not None
     assert result.metadata["validated_claim"] is False
     assert result.confidence == 0.0
 
@@ -298,7 +302,7 @@ def test_audit_trail_detects_internal_tampering():
     audit.record("test", {"nested": {"value": 1}})
     assert audit.verify()
 
-    audit._events[0]["details"]["nested"]["value"] = 2
+    cast(Any, audit._events)[0]["details"]["nested"]["value"] = 2
     assert audit.verify() is False
 
 
@@ -307,9 +311,9 @@ def test_audit_events_cannot_mutate_internal_nested_details():
     audit.record("test", {"nested": {"value": 1}})
 
     returned = audit.events
-    returned[0]["details"]["nested"]["value"] = 99
+    cast(Any, returned)[0]["details"]["nested"]["value"] = 99
 
-    assert audit.events[0]["details"]["nested"]["value"] == 1
+    assert cast(Any, audit.events)[0]["details"]["nested"]["value"] == 1
     assert audit.verify()
 
 
@@ -512,6 +516,7 @@ def test_candidate_runner_evaluates_repeated_candidate(tmp_path):
     assert result.reproducible is True
     assert result.adopted_eligible is True
     assert result.approval_required is True
+    assert result.metric_gains is not None
     assert result.metric_gains["accuracy"] == pytest.approx(0.3)
     assert len(result.baseline_scores["accuracy"]) == 3
     assert len(result.candidate_scores["accuracy"]) == 3
@@ -859,7 +864,10 @@ def test_specialist_benchmark_validates_confidence_and_evidence_criteria():
     invalid_cases = [
         BenchmarkCase("2 + 2", expected_numeric=4, expected_confidence=1.5),
         BenchmarkCase("2 + 2", expected_numeric=4, expected_confidence=float("nan")),
-        BenchmarkCase("2 + 2", expected_numeric=4, expected_evidence_required="yes"),
+        BenchmarkCase(
+            "2 + 2", expected_numeric=4,
+            expected_evidence_required=cast(Any, "yes"),
+        ),
     ]
 
     for case in invalid_cases:
@@ -1014,7 +1022,7 @@ def test_research_engine_requires_boolean_verification_result():
     )
     engine = ResearchEngine(
         discover=lambda query: [source],
-        verify=lambda item: "false",
+        verify=cast(Any, lambda item: "false"),
         allowed_licenses={"MIT"},
     )
 
@@ -1056,13 +1064,13 @@ def test_phase18_rejects_invalid_citation_record():
             title="Research data",
             license="MIT",
             content=b"content",
-            citations=(object(),),
+            citations=cast(Any, (object(),)),
         )
 
 
 def test_phase18_rejects_malformed_discovery_results():
     engine = ResearchEngine(
-        discover=lambda query: [object()],
+        discover=cast(Any, lambda query: [object()]),
         verify=lambda source: True,
         allowed_licenses={"MIT"},
     )
@@ -1072,7 +1080,7 @@ def test_phase18_rejects_malformed_discovery_results():
 
 def test_phase18_rejects_non_sequence_discovery_results():
     engine = ResearchEngine(
-        discover=lambda query: iter(()),
+        discover=cast(Any, lambda query: iter(())),
         verify=lambda source: True,
     )
     with pytest.raises(TypeError, match="list or tuple"):
@@ -1113,7 +1121,7 @@ def test_phase18_rejects_non_boolean_verifier_result():
     )
     engine = ResearchEngine(
         discover=lambda query: [source],
-        verify=lambda item: "yes",
+        verify=cast(Any, lambda item: "yes"),
         allowed_licenses={"MIT"},
     )
     with pytest.raises(TypeError, match="Boolean"):
@@ -1152,9 +1160,11 @@ def test_phase19_rejects_invalid_objective_values(overrides):
 
 def test_candidate_runner_rejects_non_boolean_isolation_flag(tmp_path):
     class InvalidIsolationBackend(TestOnlyExperimentBackend):
-        isolation_verified = 1
+        isolation_verified = cast(Any, 1)
 
-    runner = CandidateExperimentRunner(tmp_path, InvalidIsolationBackend())
+    runner = CandidateExperimentRunner(
+        tmp_path, cast(Any, InvalidIsolationBackend())
+    )
     with pytest.raises(RuntimeError, match="isolation"):
         runner.evaluate(
             "candidate-invalid-isolation",
@@ -1193,7 +1203,7 @@ def test_candidate_runner_rejects_non_json_configuration(tmp_path):
 def test_research_engine_rejects_non_string_question():
     engine = ResearchEngine(lambda query: [], lambda source: True)
     with pytest.raises(ValueError, match="question"):
-        engine.run(None)
+        engine.run(cast(Any, None))
 
 
 def test_research_engine_rejects_non_boolean_source_verified_flag():
@@ -1205,7 +1215,7 @@ def test_research_engine_rejects_non_boolean_source_verified_flag():
         "MIT",
         content,
         hashlib.sha256(content.encode()).hexdigest(),
-        1,
+        cast(Any, 1),
         "Unverified",
     )
     engine = ResearchEngine(lambda query: [source], lambda item: True)

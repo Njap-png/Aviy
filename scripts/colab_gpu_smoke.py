@@ -85,11 +85,24 @@ def main() -> int:
         checkpoint_path=checkpoint,
     )
 
-    losses = list(first["losses"]) + list(resumed["losses"])
+    first_losses = first.get("losses")
+    resumed_losses = resumed.get("losses")
+    if (
+        not isinstance(first_losses, list)
+        or not isinstance(resumed_losses, list)
+        or not all(isinstance(loss, (int, float)) for loss in first_losses)
+        or not all(isinstance(loss, (int, float)) for loss in resumed_losses)
+    ):
+        raise RuntimeError("Training returned an invalid loss report.")
+
+    losses = first_losses + resumed_losses
     if not all(math.isfinite(float(loss)) for loss in losses):
         raise RuntimeError("Training produced a non-finite loss.")
 
-    resources = resumed["resources"]
+    resources = resumed.get("resources")
+    if not isinstance(resources, dict):
+        raise TypeError("Training returned an invalid resource report.")
+
     required_resource_fields = {
         "device",
         "cuda_name",

@@ -1,4 +1,5 @@
 import math
+from typing import Any, cast
 
 import pytest
 
@@ -7,6 +8,7 @@ from aviy.agents.runtime import (
     AgentRuntime,
     AgentTask,
     AuditTrail,
+    SandboxToolDefinition,
     TaskCoordinator,
     ToolDefinition,
     ToolRegistry,
@@ -18,16 +20,22 @@ class RecordingExecutor:
 
     isolation_verified = True
 
-    def __init__(self, result=None, error=None):
-        self.result = result if result is not None else {"ok": True}
-        self.error = error
-        self.calls = []
+    def __init__(self, result: Any = None, error: Any = None):
+        self.result: Any = result if result is not None else {"ok": True}
+        self.error: Any = error
+        self.calls: list[tuple[str, dict[str, object], float]] = []
 
-    def execute(self, tool, arguments, *, timeout_seconds):
+    def execute(
+        self,
+        tool: ToolDefinition | SandboxToolDefinition,
+        arguments: dict[str, object],
+        *,
+        timeout_seconds: float,
+    ) -> dict[str, object]:
         self.calls.append((tool.name, arguments, timeout_seconds))
         if self.error is not None:
             raise self.error
-        return self.result
+        return cast(dict[str, object], self.result)
 
 
 def registry():
@@ -88,7 +96,7 @@ def test_tool_definition_rejects_invalid_timeout():
 
 def test_tool_definition_requires_callable_handler():
     with pytest.raises(TypeError):
-        ToolDefinition("bad", None, "permission")
+        ToolDefinition("bad", cast(Any, None), "permission")
 
 
 def test_registry_exposes_stable_tool_names():
@@ -124,7 +132,7 @@ def test_agent_rejects_invalid_message_recipient():
     agent = AgentRuntime("a", set(), ToolRegistry(), AuditTrail())
     agent.start()
     with pytest.raises(TypeError):
-        agent.send("not an agent", "hello")
+        agent.send(cast(Any, "not an agent"), "hello")
 
 
 def test_agent_rejects_blank_message():
@@ -177,7 +185,7 @@ def test_tool_execution_rejects_isolation_property_error():
         def isolation_verified(self):
             raise OSError("verification failed")
 
-    agent = AgentRuntime("a", {"echo"}, registry(), AuditTrail(), BrokenExecutor())
+    agent = AgentRuntime("a", {"echo"}, registry(), AuditTrail(), cast(Any, BrokenExecutor()))
     agent.start()
     with pytest.raises(RuntimeError, match="verification failed"):
         agent.invoke("echo", {})
@@ -235,7 +243,7 @@ def test_tool_execution_returns_detached_result():
     agent = AgentRuntime("a", {"echo"}, registry(), AuditTrail(), executor)
     agent.start()
     result = agent.invoke("echo", {})
-    result["nested"]["value"] = 99
+    cast(dict[str, object], result["nested"])["value"] = 99
     assert executor.result["nested"]["value"] == 1
 
 
@@ -262,14 +270,14 @@ def test_audit_export_checks_integrity():
 
 def test_message_validation_rejects_invalid_field_types():
     with pytest.raises(ValueError, match="sender and recipient"):
-        AgentMessage(None, "b", "hello", 1.0)
+        AgentMessage(cast(Any, None), "b", "hello", 1.0)
 
     with pytest.raises(ValueError, match="sender and recipient"):
-        AgentMessage("a", 123, "hello", 1.0)
+        AgentMessage("a", cast(Any, 123), "hello", 1.0)
 
     for timestamp in (True, "1.0", float("nan"), float("inf"), 0):
         with pytest.raises(ValueError, match="timestamp"):
-            AgentMessage("a", "b", "hello", timestamp)
+            AgentMessage("a", "b", "hello", cast(Any, timestamp))
 
 
 def test_send_audit_failure_does_not_deliver_message():

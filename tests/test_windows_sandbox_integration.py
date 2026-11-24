@@ -82,12 +82,15 @@ param($Arguments)
     )
 
     assert result["received_value"] == "Aviy integration test"
-    assert result["guest_computer"]
+    guest_computer = result["guest_computer"]
+    guest_identity = result["guest_identity"]
+    assert isinstance(guest_computer, str) and guest_computer
+    assert isinstance(guest_identity, str) and guest_identity
     assert (
-        result["guest_computer"].casefold()
+        guest_computer.casefold()
         != __import__("socket").gethostname().casefold()
     )
-    assert result["guest_identity"].casefold().endswith(r"\wdagutilityaccount")
+    assert guest_identity.casefold().endswith(r"\wdagutilityaccount")
     assert [event["event"] for event in audit.events] == [
         "agent_started",
         "tool_started",
@@ -149,6 +152,7 @@ param($Arguments)
     assert result.reproducible is True
     assert result.adopted_eligible is True
     assert result.approval_required is True
+    assert result.metric_gains is not None
     assert result.metric_gains["accuracy"] == pytest.approx(0.30)
 
     ledger = CandidateAdoptionLedger(tmp_path / "adoption.jsonl")

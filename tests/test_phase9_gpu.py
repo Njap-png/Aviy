@@ -4,6 +4,7 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 import torch
 
@@ -45,17 +46,21 @@ class Phase9CPUTests(unittest.TestCase):
                     seed=42,
                     precision=precision,
                 )
-                self.assertEqual(report["resources"]["device"], "cpu")
+                resources = cast(dict[str, object], report["resources"])
+                losses = cast(list[float], report["losses"])
+                self.assertEqual(resources["device"], "cpu")
                 self.assertTrue(
-                    all(math.isfinite(float(loss)) for loss in report["losses"])
+                    all(math.isfinite(float(loss)) for loss in losses)
                 )
-                self.assertNotIn("cuda_allocated_bytes", report["resources"])
+                self.assertNotIn("cuda_allocated_bytes", resources)
 
     def test_cpu_resource_report(self):
         report = resource_report(torch.device("cpu"))
-        self.assertEqual(report["device"], "cpu")
-        self.assertGreaterEqual(report["cpu_threads"], 1)
-        self.assertNotIn("cuda_name", report)
+        resources = cast(dict[str, object], report)
+        cpu_threads = cast(int, resources["cpu_threads"])
+        self.assertEqual(resources["device"], "cpu")
+        self.assertGreaterEqual(cpu_threads, 1)
+        self.assertNotIn("cuda_name", resources)
 
     def test_invalid_precision_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -106,15 +111,18 @@ class Phase9CUDATests(unittest.TestCase):
                     self.assertEqual(first["global_step"], 2)
                     self.assertEqual(resumed["resumed_from_step"], 2)
                     self.assertEqual(resumed["global_step"], 3)
-                    self.assertEqual(resumed["resources"]["device"], "cuda")
-                    self.assertIn("cuda_name", resumed["resources"])
-                    self.assertIn("cuda_allocated_bytes", resumed["resources"])
-                    self.assertIn("cuda_reserved_bytes", resumed["resources"])
-                    self.assertIn("cuda_peak_allocated_bytes", resumed["resources"])
+                    resources = cast(dict[str, object], resumed["resources"])
+                    first_losses = cast(list[float], first["losses"])
+                    resumed_losses = cast(list[float], resumed["losses"])
+                    self.assertEqual(resources["device"], "cuda")
+                    self.assertIn("cuda_name", resources)
+                    self.assertIn("cuda_allocated_bytes", resources)
+                    self.assertIn("cuda_reserved_bytes", resources)
+                    self.assertIn("cuda_peak_allocated_bytes", resources)
                     self.assertTrue(
                         all(
                             math.isfinite(float(loss))
-                            for loss in first["losses"] + resumed["losses"]
+                            for loss in first_losses + resumed_losses
                         )
                     )
 

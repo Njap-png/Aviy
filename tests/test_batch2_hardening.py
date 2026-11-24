@@ -1,6 +1,7 @@
 import json
 import math
 import threading
+from typing import Any, cast
 
 import pytest
 
@@ -61,7 +62,7 @@ def test_multimodal_rejects_invalid_ids_and_metadata():
     with pytest.raises(ValueError):
         interface.ingest("", b"x")
     with pytest.raises(TypeError):
-        interface.ingest("id", b"x", [])
+        interface.ingest("id", b"x", cast(Any, []))
     with pytest.raises(ValueError):
         interface.ingest("id", b"x", {"score": float("nan")})
 
@@ -74,7 +75,7 @@ def test_multimodal_rejects_boolean_payload_limit():
 def test_multimodal_rejects_wrong_interface_types():
     interfaces = {name: ModalityInterface(name, lambda p, m: True)
                   for name in SUPPORTED_MODALITIES}
-    interfaces["image"] = object()
+    interfaces["image"] = cast(Any, object())
     with pytest.raises(ValueError):
         MultimodalWorkbench(interfaces)
 
@@ -158,7 +159,7 @@ def test_recovery_rejects_malformed_approval_record(tmp_path):
     ledger = DurableGovernanceLedger(tmp_path / "ledger.jsonl", KEY)
     with pytest.raises(ValueError):
         GovernedRecovery(ledger).run(
-            "proposal", [("alice", ["recovery_approver"]), ("bob",)],
+            "proposal", cast(Any, [("alice", ["recovery_approver"]), ("bob",)]),
             lambda: True, lambda: True, lambda: True,
         )
 
