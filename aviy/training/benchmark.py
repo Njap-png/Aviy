@@ -1,4 +1,5 @@
 """Small reproducible optimizer benchmark on synthetic data."""
+
 from __future__ import annotations
 
 import time

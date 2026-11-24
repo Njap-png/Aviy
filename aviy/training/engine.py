@@ -1,4 +1,5 @@
 """Reproducible causal language-model training engine for CPU and CUDA."""
+
 from __future__ import annotations
 
 import json

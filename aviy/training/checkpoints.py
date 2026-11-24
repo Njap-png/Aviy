@@ -1,4 +1,5 @@
-﻿"""Atomic checkpoint persistence with SHA-256 integrity verification."""
+"""Atomic checkpoint persistence with SHA-256 integrity verification."""
+
 from __future__ import annotations
 
 import hashlib

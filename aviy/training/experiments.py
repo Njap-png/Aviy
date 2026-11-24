@@ -1,4 +1,5 @@
-﻿"""Local experiment metadata, event history and lineage tracking."""
+"""Local experiment metadata, event history and lineage tracking."""
+
 from __future__ import annotations
 
 import json

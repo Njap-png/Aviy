@@ -1,4 +1,5 @@
 """Optimizer interfaces and implementations."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -8,7 +9,9 @@ from torch import nn
 
 
 class OptimizerFactory(Protocol):
-    def __call__(self, parameters: object, **kwargs: object) -> torch.optim.Optimizer: ...
+    def __call__(
+        self, parameters: object, **kwargs: object
+    ) -> torch.optim.Optimizer: ...
 
 
 def build_optimizer(
@@ -35,9 +38,7 @@ def build_optimizer(
     return factory(parameters, lr=learning_rate, weight_decay=weight_decay)
 
 
-def clip_gradients(
-    model: nn.Module, max_norm: float = 1.0
-) -> torch.Tensor:
+def clip_gradients(model: nn.Module, max_norm: float = 1.0) -> torch.Tensor:
     """Clip gradients and return the pre-clipping total norm."""
     if max_norm <= 0:
         raise ValueError("max_norm must be positive")

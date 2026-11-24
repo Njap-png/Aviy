@@ -1,4 +1,5 @@
-﻿"""Public training utilities."""
+"""Public training utilities."""
+
 from aviy.training.checkpoints import (
     atomic_save_checkpoint,
     load_verified_checkpoint,

@@ -239,4 +239,3 @@ def test_database_connections_are_closed(tmp_path, monkeypatch):
     for connection in connections:
         with pytest.raises(sqlite3.ProgrammingError, match="closed"):
             connection.execute("SELECT 1")
-

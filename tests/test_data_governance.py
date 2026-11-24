@@ -25,7 +25,10 @@ class DatasetGovernanceTests(unittest.TestCase):
         return DatasetRecord(**values)
 
     def test_unicode_and_whitespace_normalization(self):
-        self.assertEqual(normalize_text("  Cafe" + chr(769) + " \n test  "), "Caf" + chr(233) + " test")
+        self.assertEqual(
+            normalize_text("  Cafe" + chr(769) + " \n test  "),
+            "Caf" + chr(233) + " test",
+        )
 
     def test_approved_records_are_ingested(self):
         result = prepare_dataset(
@@ -58,7 +61,6 @@ class DatasetGovernanceTests(unittest.TestCase):
         self.assertEqual(result.audit.accepted, 0)
         self.assertFalse(result.audit.provenance_complete)
 
-
     def test_missing_source_uri_is_rejected(self):
         result = prepare_dataset(
             [self.record("A valid example.", source_uri="")],
@@ -69,13 +71,15 @@ class DatasetGovernanceTests(unittest.TestCase):
 
     def test_malformed_record_types_are_rejected(self):
         result = prepare_dataset(
-            [{
-                "text": 123,
-                "source_id": "approved-corpus-v1",
-                "license": "CC-BY-4.0",
-                "source_uri": "dataset:approved-corpus-v1",
-                "approved_for_training": True,
-            }],
+            [
+                {
+                    "text": 123,
+                    "source_id": "approved-corpus-v1",
+                    "license": "CC-BY-4.0",
+                    "source_uri": "dataset:approved-corpus-v1",
+                    "approved_for_training": True,
+                }
+            ],
             allowed_licenses=["CC-BY-4.0"],
         )
         self.assertEqual(result.audit.accepted, 0)

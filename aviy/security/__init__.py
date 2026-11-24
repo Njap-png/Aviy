@@ -1,1 +1,1 @@
-﻿"""Aviy package."""
+"""Aviy package."""

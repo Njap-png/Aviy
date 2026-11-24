@@ -25,14 +25,26 @@ def test_engineering_standards_document_exists():
 
 
 def test_all_application_packages_are_documented():
-    document = (ROOT / "docs" / "ENGINEERING_STANDARDS.md").read_text(
-        encoding="utf-8"
-    )
+    document = (ROOT / "docs" / "ENGINEERING_STANDARDS.md").read_text(encoding="utf-8")
     packages = [
-        "core", "models", "tokenizer", "data", "learning", "training",
-        "cognition", "memory", "knowledge", "agents", "tools",
-        "multimodal", "autonomous", "evaluation", "infrastructure",
-        "security", "api", "cli",
+        "core",
+        "models",
+        "tokenizer",
+        "data",
+        "learning",
+        "training",
+        "cognition",
+        "memory",
+        "knowledge",
+        "agents",
+        "tools",
+        "multimodal",
+        "autonomous",
+        "evaluation",
+        "infrastructure",
+        "security",
+        "api",
+        "cli",
     ]
     for package in packages:
         assert f"`{package}`" in document
