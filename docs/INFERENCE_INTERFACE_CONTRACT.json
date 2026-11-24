@@ -1,0 +1,63 @@
+{
+  "contract": "Aviy inference interface",
+  "version": 1,
+  "status": "runtime_implemented_real_checkpoint_validation_pending",
+  "operations": {
+    "load": {
+      "inputs": [
+        "model_config",
+        "checkpoint_path",
+        "tokenizer_path",
+        "device"
+      ],
+      "requirements": [
+        "validate paths and formats",
+        "validate model/tokenizer/config compatibility",
+        "verify checkpoint integrity",
+        "never initialize random weights as a substitute for a checkpoint"
+      ]
+    },
+    "generate": {
+      "inputs": [
+        "prompt",
+        "max_new_tokens",
+        "temperature",
+        "top_p",
+        "seed"
+      ],
+      "requirements": [
+        "validate prompt and generation limits",
+        "set evaluation mode",
+        "use inference-only execution",
+        "return generated text and execution metadata"
+      ]
+    },
+    "unload": {
+      "requirements": [
+        "release model references",
+        "release accelerator memory when applicable"
+      ]
+    }
+  },
+  "error_categories": [
+    "missing_checkpoint",
+    "missing_tokenizer",
+    "invalid_configuration",
+    "incompatible_artifacts",
+    "unsupported_device",
+    "invalid_generation_parameters",
+    "out_of_memory",
+    "inference_failure"
+  ],
+  "acceptance_tests": [
+    "load a verified real checkpoint",
+    "tokenize and detokenize known examples",
+    "run a bounded generation",
+    "verify output type and nonempty result",
+    "verify deterministic output under supported deterministic settings",
+    "test invalid paths and invalid parameters",
+    "test CPU fallback if supported",
+    "run full regression suite"
+  ],
+  "status_detail": "The inference runtime, artifact export and loading, tokenizer compatibility checks, SHA-256 integrity verification, and bounded text generation are implemented and covered by runtime tests. Loading and validating a verified trained checkpoint, followed by the complete end-to-end acceptance suite, remain outstanding acceptance gates."
+}
