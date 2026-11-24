@@ -1,14 +1,14 @@
-﻿import torch
+﻿import pytest
+import torch
 from torch import nn
-import pytest
 
-from aviy.training.engine import train_steps
 from aviy.evaluation.benchmarks import (
     EVALUATION_DIMENSIONS,
     BenchmarkCase,
     BenchmarkSuite,
     run_benchmark,
 )
+from aviy.training.engine import train_steps
 
 
 class TinyLanguageModel(nn.Module):
