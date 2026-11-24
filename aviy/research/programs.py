@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 
 
@@ -34,6 +35,11 @@ def compare_benchmarks(baseline, candidate, output):
         raise ValueError("Report output must not overwrite either benchmark input.")
     if output.is_symlink():
         raise ValueError("Report output cannot be a symlink.")
+    if output.exists() and (
+        os.path.samefile(output, baseline)
+        or os.path.samefile(output, candidate)
+    ):
+        raise ValueError("Report output must not be a hard link to either input.")
 
     a = _read_json(baseline)
     b = _read_json(candidate)
@@ -52,10 +58,18 @@ def compare_benchmarks(baseline, candidate, output):
             isinstance(x, (int, float)) and not isinstance(x, bool)
             and isinstance(y, (int, float)) and not isinstance(y, bool)
         ):
-            if not math.isfinite(x) or not math.isfinite(y):
+            if (
+                (isinstance(x, float) and not math.isfinite(x))
+                or (isinstance(y, float) and not math.isfinite(y))
+            ):
                 raise ValueError(f"Metric {key!r} must be finite.")
-            difference = y - x
-            if not math.isfinite(difference):
+            try:
+                difference = y - x
+            except OverflowError as exc:
+                raise ValueError(
+                    f"Metric difference {key!r} exceeds supported numeric range."
+                ) from exc
+            if isinstance(difference, float) and not math.isfinite(difference):
                 raise ValueError(f"Metric difference {key!r} is not finite.")
             comparisons[key] = {
                 "baseline": x, "candidate": y, "difference": difference

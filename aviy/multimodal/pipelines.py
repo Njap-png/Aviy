@@ -11,9 +11,41 @@ from dataclasses import dataclass
 SUPPORTED_MODALITIES = ("image", "document", "audio", "speech", "video")
 
 
+class _FrozenDict(dict):
+    """A JSON-compatible dictionary that rejects mutation."""
+
+    def _immutable(self, *args, **kwargs):
+        raise TypeError("Sample metadata is immutable.")
+
+    __setitem__ = _immutable
+    __delitem__ = _immutable
+    clear = _immutable
+    pop = _immutable
+    popitem = _immutable
+    def setdefault(self, key: str, default: object = None) -> object:
+        raise TypeError("Sample metadata is immutable.")
+
+    def update(self, *args: object, **kwargs: object) -> None:
+        raise TypeError("Sample metadata is immutable.")
+
+    __ior__ = _immutable
+
+
+def _freeze_json(value: object) -> object:
+    if isinstance(value, dict):
+        frozen = _FrozenDict()
+        for key, item in value.items():
+            dict.__setitem__(frozen, key, _freeze_json(item))
+        return frozen
+    if isinstance(value, list):
+        return tuple(_freeze_json(item) for item in value)
+    return value
+
+
 def _json_copy(value: object) -> object:
     try:
-        return json.loads(json.dumps(value, allow_nan=False, sort_keys=True))
+        copied = json.loads(json.dumps(value, allow_nan=False, sort_keys=True))
+        return copied
     except (TypeError, ValueError) as exc:
         raise ValueError("Metadata and metrics must contain finite JSON values.") from exc
 
@@ -34,7 +66,7 @@ class ModalitySample:
             raise ValueError("Payload must be non-empty bytes.")
         if not isinstance(self.metadata, dict):
             raise TypeError("metadata must be a dictionary.")
-        object.__setattr__(self, "metadata", _json_copy(self.metadata))
+        object.__setattr__(self, "metadata", _freeze_json(_json_copy(self.metadata)))
 
 
 @dataclass(frozen=True)

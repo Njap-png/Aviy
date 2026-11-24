@@ -209,3 +209,60 @@ def test_governance_ledger_entries_are_defensive_copies():
     exposed[0]["payload"]["evidence"]["nested"]["value"] = 99
     assert ledger.verify()
     assert ledger.entries[0]["payload"]["evidence"]["nested"]["value"] == 1
+
+def test_multimodal_metadata_is_deeply_immutable():
+    sample = ModalitySample(
+        "id", "image", b"x", {"nested": {"value": 1}, "items": [1, 2]}
+    )
+    dataset = ModalityDataset("image", (sample,))
+    original_fingerprint = dataset.fingerprint
+
+    with pytest.raises(TypeError):
+        sample.metadata["nested"]["value"] = 2
+    with pytest.raises(TypeError):
+        sample.metadata["new"] = "value"
+    with pytest.raises(AttributeError):
+        sample.metadata["items"].append(3)
+
+    assert dataset.fingerprint == original_fingerprint
+
+
+def test_multimodal_metadata_is_detached_from_caller():
+    metadata = {"nested": {"value": 1}}
+    sample = ModalitySample("id", "image", b"x", metadata)
+    metadata["nested"]["value"] = 99
+    assert sample.metadata["nested"]["value"] == 1
+
+
+def test_benchmark_output_cannot_overwrite_hard_link_to_input(tmp_path):
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    output = tmp_path / "baseline-hardlink.json"
+    baseline.write_text('{"metrics":{"score":1}}', encoding="utf-8")
+    candidate.write_text('{"metrics":{"score":2}}', encoding="utf-8")
+
+    try:
+        output.hardlink_to(baseline)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Hard links are unavailable: {exc}")
+
+    original = baseline.read_bytes()
+    with pytest.raises(ValueError, match="hard link"):
+        compare_benchmarks(baseline, candidate, output)
+    assert baseline.read_bytes() == original
+
+
+def test_benchmark_comparison_supports_very_large_integer_metrics(tmp_path):
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    output = tmp_path / "report.json"
+    baseline.write_text(
+        json.dumps({"metrics": {"score": -(10 ** 1000)}}), encoding="utf-8"
+    )
+    candidate.write_text(
+        json.dumps({"metrics": {"score": 10 ** 1000}}), encoding="utf-8"
+    )
+
+    report = compare_benchmarks(baseline, candidate, output)
+    assert report["comparisons"]["score"]["difference"] == 2 * (10 ** 1000)
+    assert output.is_file()
