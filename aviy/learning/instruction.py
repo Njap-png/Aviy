@@ -1,4 +1,5 @@
 """Approved instruction-data preparation and supervised fine-tuning."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -38,8 +39,7 @@ class PreparedInstructionDataset:
         if name not in ("train", "validation", "test"):
             raise ValueError("Unknown dataset split")
         return tuple(
-            record for record in self.records
-            if getattr(record, "split", "") == name
+            record for record in self.records if getattr(record, "split", "") == name
         )
 
 
@@ -81,15 +81,17 @@ def prepare_instruction_dataset(
         original = by_id.get(item.record_id)
         if original is None:
             raise ValueError("Prepared instruction record lost its source mapping")
-        split_records.append(SplitInstructionRecord(
-            prompt=original.prompt,
-            response=original.response,
-            source_id=original.source_id,
-            license=original.license,
-            source_uri=original.source_uri,
-            record_id=original.record_id,
-            split=item.split,
-        ))
+        split_records.append(
+            SplitInstructionRecord(
+                prompt=original.prompt,
+                response=original.response,
+                source_id=original.source_id,
+                license=original.license,
+                source_uri=original.source_uri,
+                record_id=original.record_id,
+                split=item.split,
+            )
+        )
     return PreparedInstructionDataset(
         records=tuple(split_records), audit=prepared.audit
     )
@@ -130,12 +132,8 @@ def train_supervised_finetuning(
             token_ids = tokenizer.encode(text)[:maximum_length]
             if len(token_ids) < 2:
                 continue
-            inputs = torch.tensor(
-                [token_ids[:-1]], dtype=torch.long, device=device
-            )
-            targets = torch.tensor(
-                [token_ids[1:]], dtype=torch.long, device=device
-            )
+            inputs = torch.tensor([token_ids[:-1]], dtype=torch.long, device=device)
+            targets = torch.tensor([token_ids[1:]], dtype=torch.long, device=device)
             optimizer.zero_grad(set_to_none=True)
             logits = model(inputs)
             loss = causal_language_model_loss(logits, targets)
@@ -184,7 +182,8 @@ def evaluate_alignment(
         for key in ("instruction_following", "safety"):
             value = result.get(key)
             if (
-                isinstance(value, bool) or not isinstance(value, (int, float))
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
                 or not 0 <= value <= 1
             ):
                 raise ValueError(f"Evaluator returned invalid {key} score")
@@ -208,7 +207,8 @@ def evaluate_alignment(
         "safety": safety_mean,
         "preference": (
             sum(preference_scores) / len(preference_scores)
-            if preference_scores else None
+            if preference_scores
+            else None
         ),
         "passed": (
             instruction_mean >= minimum_instruction_score

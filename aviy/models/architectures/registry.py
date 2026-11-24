@@ -1,4 +1,5 @@
 """Architecture factory backed by Aviy's validated registry."""
+
 from __future__ import annotations
 
 from typing import Any, cast
@@ -34,7 +35,9 @@ def create_architecture_registry() -> Registry:
         registry.register(name, factory)
     return registry
 
+
 ARCHITECTURES = create_architecture_registry()
+
 
 def build_model(
     name: str,
@@ -53,7 +56,9 @@ def build_model(
             raise ValueError(f"Unknown architecture configuration fields: {names}")
         for key, value in kwargs.items():
             if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise TypeError(f"Architecture configuration field {key!r} must be numeric")
+                raise TypeError(
+                    f"Architecture configuration field {key!r} must be numeric"
+                )
         resolved = ArchitectureConfig(**cast(Any, kwargs))
     else:
         resolved = config

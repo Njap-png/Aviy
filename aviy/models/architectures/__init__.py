@@ -1,4 +1,5 @@
 """Replaceable Aviy neural architecture library."""
+
 from aviy.models.architectures.base import ArchitectureConfig, LanguageModel
 from aviy.models.architectures.families import (
     GNNLM,

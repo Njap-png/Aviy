@@ -32,12 +32,14 @@ class RecordingExecutor:
 
 def registry():
     result = ToolRegistry()
-    result.register(ToolDefinition(
-        "echo",
-        lambda args: {"value": args.get("value")},
-        "echo",
-        2.0,
-    ))
+    result.register(
+        ToolDefinition(
+            "echo",
+            lambda args: {"value": args.get("value")},
+            "echo",
+            2.0,
+        )
+    )
     return result
 
 

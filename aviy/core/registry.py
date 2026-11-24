@@ -39,9 +39,7 @@ class Registry[T]:
             if self._frozen:
                 raise RegistryError("Registry is frozen.")
             if name in self._items and not replace:
-                raise DuplicateRegistrationError(
-                    f"Name is already registered: {name}"
-                )
+                raise DuplicateRegistrationError(f"Name is already registered: {name}")
             self._items[name] = value
         return value
 

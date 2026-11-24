@@ -1,4 +1,5 @@
 """Graph and vector retrieval interfaces with deterministic local backends."""
+
 from __future__ import annotations
 
 import math
@@ -43,7 +44,8 @@ class InMemoryGraph:
         if node_id not in self.nodes:
             raise KeyError(node_id)
         return [
-            target for target, edge_relation in self.edges[node_id]
+            target
+            for target, edge_relation in self.edges[node_id]
             if relation is None or edge_relation == relation
         ]
 
@@ -69,9 +71,7 @@ class InMemoryVectorIndex:
                 raise ValueError("Vector dimensions do not match the index")
         self._vectors[item_id] = values
 
-    def query(
-        self, vector: Sequence[float], limit: int = 5
-    ) -> list[tuple[str, float]]:
+    def query(self, vector: Sequence[float], limit: int = 5) -> list[tuple[str, float]]:
         if limit < 1:
             raise ValueError("limit must be positive")
         query = self._validate(vector)

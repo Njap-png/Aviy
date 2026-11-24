@@ -55,9 +55,7 @@ class Container:
 
         with self._lock:
             if key in self._bindings and not replace:
-                raise DuplicateRegistrationError(
-                    f"Dependency already bound: {key}"
-                )
+                raise DuplicateRegistrationError(f"Dependency already bound: {key}")
             self._bindings[key] = _Binding(factory, lifetime)
 
     def bind_instance(
@@ -74,9 +72,7 @@ class Container:
 
         with self._lock:
             if key in self._bindings and not replace:
-                raise DuplicateRegistrationError(
-                    f"Dependency already bound: {key}"
-                )
+                raise DuplicateRegistrationError(f"Dependency already bound: {key}")
             self._bindings[key] = _Binding(
                 factory=lambda _container: instance,
                 lifetime=Lifetime.SINGLETON,
@@ -91,16 +87,12 @@ class Container:
         stack = getattr(self._local, "resolution_stack", [])
         if key in stack:
             chain = " -> ".join([*stack, key])
-            raise CircularDependencyError(
-                f"Circular dependency detected: {chain}"
-            )
+            raise CircularDependencyError(f"Circular dependency detected: {chain}")
 
         with self._lock:
             binding = self._bindings.get(key)
             if binding is None:
-                raise DependencyResolutionError(
-                    f"Dependency is not registered: {key}"
-                )
+                raise DependencyResolutionError(f"Dependency is not registered: {key}")
 
             if binding.lifetime is Lifetime.SINGLETON and binding.has_instance:
                 return binding.instance

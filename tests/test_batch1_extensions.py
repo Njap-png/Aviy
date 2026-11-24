@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import tempfile
 import unittest
@@ -85,9 +85,7 @@ class BatchOneExtensionTests(unittest.TestCase):
             )
 
             self.assertTrue(path.is_file())
-            self.assertTrue(
-                Path(str(path) + ".sha256").is_file()
-            )
+            self.assertTrue(Path(str(path) + ".sha256").is_file())
             self.assertEqual(len(verify_checkpoint(path)), 64)
             payload = load_verified_checkpoint(path)
             self.assertEqual(payload["step"], 1)
@@ -160,7 +158,6 @@ class BatchOneExtensionTests(unittest.TestCase):
             strict=True,
         ):
             self.assertTrue(torch.equal(expected, actual))
-
 
     def test_multi_batch_resume_preserves_batch_position(self) -> None:
         batches = [
@@ -240,7 +237,6 @@ class BatchOneExtensionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "sidecar is missing"):
                 verify_checkpoint(path)
 
-
     def test_experiment_metadata_and_lineage(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -262,15 +258,11 @@ class BatchOneExtensionTests(unittest.TestCase):
             import json
 
             metadata = json.loads(
-                (root / "child" / "metadata.json").read_text(
-                    encoding="utf-8"
-                )
+                (root / "child" / "metadata.json").read_text(encoding="utf-8")
             )
             self.assertEqual(metadata["parent_run_id"], parent.run_id)
             self.assertEqual(metadata["run_id"], child.run_id)
-            self.assertTrue(
-                (root / "child" / "events.jsonl").is_file()
-            )
+            self.assertTrue((root / "child" / "events.jsonl").is_file())
 
 
 if __name__ == "__main__":

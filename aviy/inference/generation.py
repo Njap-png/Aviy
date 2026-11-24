@@ -1,4 +1,5 @@
 """Autoregressive decoding, bounded response caching and inference metrics."""
+
 from __future__ import annotations
 
 import time
@@ -73,9 +74,7 @@ def _sample_next_token(
 
     probabilities = torch.softmax(scores, dim=-1)
     if config.top_p < 1.0:
-        sorted_probs, sorted_indices = torch.sort(
-            probabilities, descending=True
-        )
+        sorted_probs, sorted_indices = torch.sort(probabilities, descending=True)
         cumulative = torch.cumsum(sorted_probs, dim=-1)
         remove = cumulative - sorted_probs >= config.top_p
         sorted_probs[remove] = 0

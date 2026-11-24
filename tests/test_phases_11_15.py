@@ -60,9 +60,9 @@ def test_benchmark_covers_all_dimensions_and_is_reproducible() -> None:
 
 
 def test_benchmark_rejects_missing_dimension() -> None:
-    suite = BenchmarkSuite("partial", (
-        BenchmarkCase("a", "reasoning", "prompt", "answer"),
-    ))
+    suite = BenchmarkSuite(
+        "partial", (BenchmarkCase("a", "reasoning", "prompt", "answer"),)
+    )
     with pytest.raises(ValueError, match="missing dimensions"):
         run_benchmark(suite, lambda _: "answer")
 
@@ -72,9 +72,9 @@ def test_benchmark_contamination_and_regression() -> None:
     result = check_contamination(suite, ["  PROMPT 0 "])
     assert not result["passed"]
     assert result["overlapping_case_ids"] == ["case-0"]
-    assert compare_regression(
-        {"accuracy": 0.9}, {"accuracy": 0.89}, maximum_drop=0.02
-    )["passed"]
+    assert compare_regression({"accuracy": 0.9}, {"accuracy": 0.89}, maximum_drop=0.02)[
+        "passed"
+    ]
     assert not compare_regression(
         {"accuracy": 0.9}, {"accuracy": 0.8}, maximum_drop=0.02
     )["passed"]
@@ -83,12 +83,18 @@ def test_benchmark_contamination_and_regression() -> None:
 def test_memory_owner_access_versioning_expiry_and_recovery() -> None:
     store = MemoryStore()
     first = store.put(
-        record_id="m1", owner_id="owner-a", kind="episodic",
-        content="first event", provenance="conversation:1",
+        record_id="m1",
+        owner_id="owner-a",
+        kind="episodic",
+        content="first event",
+        provenance="conversation:1",
     )
     second = store.put(
-        record_id="m1", owner_id="owner-a", kind="episodic",
-        content="updated event", provenance="conversation:2",
+        record_id="m1",
+        owner_id="owner-a",
+        kind="episodic",
+        content="updated event",
+        provenance="conversation:2",
         conflict="replace",
     )
     assert first.version == 1 and second.version == 2
@@ -107,12 +113,19 @@ def test_memory_rejects_missing_provenance_and_handles_retention() -> None:
     store = MemoryStore()
     with pytest.raises(ValueError):
         store.put(
-            record_id="m", owner_id="o", kind="working",
-            content="text", provenance="",
+            record_id="m",
+            owner_id="o",
+            kind="working",
+            content="text",
+            provenance="",
         )
     store.put(
-        record_id="temporary", owner_id="o", kind="working",
-        content="short-lived", provenance="test", ttl_seconds=10,
+        record_id="temporary",
+        owner_id="o",
+        kind="working",
+        content="short-lived",
+        provenance="test",
+        ttl_seconds=10,
     )
     record = store.get("temporary", "o")
     assert record is not None
@@ -135,16 +148,20 @@ def test_graph_and_vector_retrieval() -> None:
 
 def test_planner_orders_dependencies_and_detects_cycles() -> None:
     planner = Planner()
-    result = planner.plan((
-        PlanStep("second", "Second", ("first",)),
-        PlanStep("first", "First"),
-    ))
+    result = planner.plan(
+        (
+            PlanStep("second", "Second", ("first",)),
+            PlanStep("first", "First"),
+        )
+    )
     assert [step.step_id for step in result] == ["first", "second"]
     with pytest.raises(ValueError, match="cycle"):
-        planner.plan((
-            PlanStep("a", "A", ("b",)),
-            PlanStep("b", "B", ("a",)),
-        ))
+        planner.plan(
+            (
+                PlanStep("a", "A", ("b",)),
+                PlanStep("b", "B", ("a",)),
+            )
+        )
 
 
 def test_reasoning_verification_uncertainty_and_failure_detection() -> None:
@@ -161,10 +178,16 @@ def test_reasoning_verification_uncertainty_and_failure_detection() -> None:
 
 
 def make_model() -> AviyBaseLM:
-    return AviyBaseLM(BaseModelConfig(
-        vocab_size=256, context_length=32, d_model=16,
-        n_layers=1, n_heads=2, d_ff=32,
-    ))
+    return AviyBaseLM(
+        BaseModelConfig(
+            vocab_size=256,
+            context_length=32,
+            d_model=16,
+            n_layers=1,
+            n_heads=2,
+            d_ff=32,
+        )
+    )
 
 
 def test_generation_is_deterministic_and_context_bounded() -> None:
@@ -190,8 +213,10 @@ def test_generation_cache_is_bounded_and_lru() -> None:
 def test_generation_benchmark_reports_latency() -> None:
     model = make_model()
     report = benchmark_generation(
-        model, torch.tensor([[1, 2]]),
-        GenerationConfig(max_new_tokens=2), repeats=1,
+        model,
+        torch.tensor([[1, 2]]),
+        GenerationConfig(max_new_tokens=2),
+        repeats=1,
     )
     assert report["generated_tokens"] == 2
     assert report["mean_latency_seconds"] >= 0
@@ -210,9 +235,7 @@ def make_instruction_dataset():
         )
         for index in range(30)
     ]
-    return prepare_instruction_dataset(
-        records, allowed_licenses=["CC-BY-4.0"], seed=42
-    )
+    return prepare_instruction_dataset(records, allowed_licenses=["CC-BY-4.0"], seed=42)
 
 
 def test_instruction_preparation_uses_approved_governed_data() -> None:
@@ -232,7 +255,11 @@ def test_instruction_sft_updates_model_using_training_split_only() -> None:
     model = make_model()
     before = model.token_embedding.weight.detach().clone()
     report = train_supervised_finetuning(
-        model, tokenizer, dataset, epochs=1, maximum_length=32,
+        model,
+        tokenizer,
+        dataset,
+        epochs=1,
+        maximum_length=32,
     )
     optimization_steps = report["optimization_steps"]
     assert isinstance(optimization_steps, int)
@@ -257,9 +284,13 @@ def test_alignment_evaluation_checks_instruction_and_safety() -> None:
 
 def test_instruction_dataset_rejects_unapproved_source() -> None:
     bad = InstructionRecord(
-        prompt="Question", response="Answer", source_id="source",
-        license="Unknown", approved_for_training=False,
-        source_uri="https://example.org/data", record_id="bad",
+        prompt="Question",
+        response="Answer",
+        source_id="source",
+        license="Unknown",
+        approved_for_training=False,
+        source_uri="https://example.org/data",
+        record_id="bad",
     )
     dataset = prepare_instruction_dataset([bad], allowed_licenses=["CC-BY-4.0"])
     assert dataset.audit.passed is False

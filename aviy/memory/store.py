@@ -1,4 +1,5 @@
 """Owner-scoped working, episodic and semantic memory with recovery."""
+
 from __future__ import annotations
 
 import time
@@ -42,9 +43,9 @@ class MemoryStore:
         metadata: dict[str, str] | None = None,
         conflict: Literal["reject", "replace"] = "reject",
     ) -> MemoryRecord:
-        if not all(value.strip() for value in (
-            record_id, owner_id, content, provenance
-        )):
+        if not all(
+            value.strip() for value in (record_id, owner_id, content, provenance)
+        ):
             raise ValueError("Memory ID, owner, content and provenance are required")
         if kind not in ("working", "episodic", "semantic"):
             raise ValueError("Unsupported memory kind")
@@ -127,7 +128,8 @@ class MemoryStore:
     def expire(self, now: float | None = None) -> int:
         moment = time.time() if now is None else now
         expired = [
-            key for key, record in self._records.items()
+            key
+            for key, record in self._records.items()
             if record.expires_at is not None and record.expires_at <= moment
         ]
         for key in expired:
@@ -152,8 +154,10 @@ class MemoryStore:
                 raise TypeError("Invalid memory record in snapshot")
             record = MemoryRecord(**raw)
             if (
-                not record.record_id or not record.owner_id
-                or not record.provenance or record.version < 1
+                not record.record_id
+                or not record.owner_id
+                or not record.provenance
+                or record.version < 1
                 or record.kind not in ("working", "episodic", "semantic")
                 or record.record_id in restored
             ):

@@ -1,8 +1,10 @@
 """Governed dataset ingestion, validation, deduplication and splitting."""
+
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -51,13 +53,15 @@ class DatasetAudit:
 
     @property
     def passed(self) -> bool:
-        return all((
-            self.accepted > 0,
-            self.provenance_complete,
-            self.licenses_approved,
-            self.privacy_scan_passed,
-            self.split_integrity_passed,
-        ))
+        return all(
+            (
+                self.accepted > 0,
+                self.provenance_complete,
+                self.licenses_approved,
+                self.privacy_scan_passed,
+                self.split_integrity_passed,
+            )
+        )
 
     def to_dict(self) -> dict[str, object]:
         result = asdict(self)
@@ -154,7 +158,9 @@ def read_jsonl(path: str | Path) -> list[DatasetRecord]:
                     raise TypeError("Each JSONL line must be an object")
                 records.append(_record_from_mapping(item))
             except (json.JSONDecodeError, ValueError, TypeError) as exc:
-                raise ValueError(f"Invalid JSONL record at line {line_number}: {exc}") from exc
+                raise ValueError(
+                    f"Invalid JSONL record at line {line_number}: {exc}"
+                ) from exc
     return records
 
 
@@ -180,14 +186,35 @@ def prepare_dataset(
 ) -> PreparedDataset:
     """Validate, deduplicate and deterministically split approved records."""
     ratios = (train_ratio, validation_ratio, test_ratio)
-    if any(value < 0 for value in ratios) or abs(sum(ratios) - 1.0) > 1e-9:
-        raise ValueError("Split ratios must be non-negative and sum to 1")
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+        for value in ratios
+    ):
+        raise ValueError("Split ratios must be finite, non-negative numbers")
+    if abs(sum(ratios) - 1.0) > 1e-9:
+        raise ValueError("Split ratios must sum to 1")
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
         raise ValueError("seed must be a non-negative integer")
-    if minimum_characters < 1 or maximum_characters < minimum_characters:
-        raise ValueError("Invalid character limits")
+    if (
+        isinstance(minimum_characters, bool)
+        or not isinstance(minimum_characters, int)
+        or isinstance(maximum_characters, bool)
+        or not isinstance(maximum_characters, int)
+        or minimum_characters < 1
+        or maximum_characters < minimum_characters
+    ):
+        raise ValueError("Character limits must be valid positive integers")
 
-    approved = {value.strip().lower() for value in allowed_licenses if value.strip()}
+    try:
+        license_values = list(allowed_licenses)
+    except TypeError as exc:
+        raise TypeError("allowed_licenses must be an iterable of strings") from exc
+    if any(not isinstance(value, str) for value in license_values):
+        raise TypeError("Every allowed license must be a string")
+    approved = {value.strip().lower() for value in license_values if value.strip()}
     if not approved:
         raise ValueError("At least one explicitly approved license is required")
 
@@ -201,7 +228,9 @@ def prepare_dataset(
 
     for raw in records:
         try:
-            record = raw if isinstance(raw, DatasetRecord) else _record_from_mapping(raw)
+            record = (
+                raw if isinstance(raw, DatasetRecord) else _record_from_mapping(raw)
+            )
             if not isinstance(record.text, str):
                 raise TypeError("text must be a string")
             if not isinstance(record.source_id, str):
@@ -210,6 +239,8 @@ def prepare_dataset(
                 raise TypeError("license must be a string")
             if not isinstance(record.source_uri, str):
                 raise TypeError("source_uri must be a string")
+            if not isinstance(record.record_id, str):
+                raise TypeError("record_id must be a string")
             if not isinstance(record.approved_for_training, bool):
                 raise TypeError("approved_for_training must be a boolean")
             text = normalize_text(record.text)
@@ -250,18 +281,22 @@ def prepare_dataset(
             continue
         seen.add(fingerprint)
 
-        accepted.append(DatasetRecord(
-            text=text,
-            source_id=record.source_id.strip(),
-            license=record.license.strip(),
-            approved_for_training=True,
-            source_uri=record.source_uri.strip(),
-            record_id=record.record_id.strip() or fingerprint,
-        ))
+        accepted.append(
+            DatasetRecord(
+                text=text,
+                source_id=record.source_id.strip(),
+                license=record.license.strip(),
+                approved_for_training=True,
+                source_uri=record.source_uri.strip(),
+                record_id=record.record_id.strip() or fingerprint,
+            )
+        )
 
     def split_for(record: DatasetRecord) -> str:
         fingerprint = hashlib.sha256(record.text.casefold().encode("utf-8")).hexdigest()
-        value = int(hashlib.sha256(f"{seed}:{fingerprint}".encode()).hexdigest()[:16], 16)
+        value = int(
+            hashlib.sha256(f"{seed}:{fingerprint}".encode()).hexdigest()[:16], 16
+        )
         fraction = value / 0xFFFFFFFFFFFFFFFF
         if fraction < train_ratio:
             return "train"
@@ -277,7 +312,8 @@ def prepare_dataset(
     split_texts = {
         name: {
             hashlib.sha256(record.text.casefold().encode("utf-8")).hexdigest()
-            for record in split_records if record.split == name
+            for record in split_records
+            if record.split == name
         }
         for name in ("train", "validation", "test")
     }

@@ -40,9 +40,7 @@ class Coordinator:
     def add(self, component: Component) -> None:
         """Register a component before initialization."""
         if self._state is not LifecycleState.NEW:
-            raise LifecycleError(
-                "Components can only be added before initialization."
-            )
+            raise LifecycleError("Components can only be added before initialization.")
 
         required = ("initialize", "start", "stop")
         name = getattr(component, "name", None)
@@ -51,9 +49,7 @@ class Coordinator:
         if any(not callable(getattr(component, item, None)) for item in required):
             raise TypeError("Component does not implement the lifecycle contract.")
         if any(existing.name == name for existing in self._components):
-            raise DuplicateRegistrationError(
-                f"Component already registered: {name}"
-            )
+            raise DuplicateRegistrationError(f"Component already registered: {name}")
 
         self._components.append(component)
 
@@ -91,9 +87,7 @@ class Coordinator:
         except Exception as exc:
             self._cleanup()
             self._state = LifecycleState.FAILED
-            raise LifecycleError(
-                f"Component startup failed: {failed_name}"
-            ) from exc
+            raise LifecycleError(f"Component startup failed: {failed_name}") from exc
 
         self._state = LifecycleState.RUNNING
 

@@ -1,4 +1,5 @@
 """Initial reference implementations of Aviy neural architecture families."""
+
 from __future__ import annotations
 
 import torch
@@ -66,14 +67,19 @@ class CausalAttention(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         batch, length, width = x.shape
         q, k, v = self.qkv(x).chunk(3, dim=-1)
+
         def split(t: Tensor) -> Tensor:
             return t.view(batch, length, self.heads, self.head_dim).transpose(1, 2)
+
         q, k, v = split(q), split(k), split(v)
         q = apply_rotary_embedding(q)
         k = apply_rotary_embedding(k)
         mask = torch.ones(length, length, device=x.device, dtype=torch.bool).triu(1)
         result = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=~mask,
+            q,
+            k,
+            v,
+            attn_mask=~mask,
             dropout_p=self.dropout if self.training else 0.0,
         )
         result = result.transpose(1, 2).contiguous().view(batch, length, width)
@@ -99,7 +105,9 @@ class TransformerLM(LanguageModel):
 
     def __init__(self, config: ArchitectureConfig) -> None:
         super().__init__(config)
-        self.blocks = nn.ModuleList([TransformerBlock(config) for _ in range(config.n_layers)])
+        self.blocks = nn.ModuleList(
+            [TransformerBlock(config) for _ in range(config.n_layers)]
+        )
         self.norm = RMSNorm(config.d_model)
 
     def hidden(self, input_ids: Tensor) -> Tensor:
@@ -123,8 +131,11 @@ class RecurrentLM(LanguageModel):
             raise ValueError(f"Unknown recurrent cell: {cell}")
         self.cell = cell
         self.recurrent = recurrent[cell](
-            config.d_model, config.d_model, config.n_layers,
-            batch_first=True, dropout=config.dropout if config.n_layers > 1 else 0.0,
+            config.d_model,
+            config.d_model,
+            config.n_layers,
+            batch_first=True,
+            dropout=config.dropout if config.n_layers > 1 else 0.0,
         )
         self.norm = RMSNorm(config.d_model)
 
@@ -135,6 +146,7 @@ class RecurrentLM(LanguageModel):
 
 class SSMBlock(nn.Module):
     """Simple gated recurrent state-space reference block."""
+
     def __init__(self, width: int) -> None:
         super().__init__()
         self.input_projection = nn.Linear(width, width)
@@ -147,7 +159,9 @@ class SSMBlock(nn.Module):
         outputs = []
         for index in range(x.shape[1]):
             current = x[:, index]
-            state = torch.tanh(self.input_projection(current) + self.state_projection(state))
+            state = torch.tanh(
+                self.input_projection(current) + self.state_projection(state)
+            )
             gate = torch.sigmoid(self.gate(current))
             outputs.append(gate * state + (1.0 - gate) * current)
         return self.norm(torch.stack(outputs, dim=1))
@@ -158,7 +172,9 @@ class SSMLM(LanguageModel):
 
     def __init__(self, config: ArchitectureConfig) -> None:
         super().__init__(config)
-        self.blocks = nn.ModuleList([SSMBlock(config.d_model) for _ in range(config.n_layers)])
+        self.blocks = nn.ModuleList(
+            [SSMBlock(config.d_model) for _ in range(config.n_layers)]
+        )
 
     def forward(self, input_ids: Tensor) -> Tensor:
         x = self.embed(input_ids)
@@ -169,6 +185,7 @@ class SSMLM(LanguageModel):
 
 class RWKVTimeMix(nn.Module):
     """Educational time-mixing block; not a full optimized RWKV implementation."""
+
     def __init__(self, width: int) -> None:
         super().__init__()
         self.mix = nn.Parameter(torch.full((1, 1, width), 0.5))
@@ -180,7 +197,10 @@ class RWKVTimeMix(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         shifted = torch.cat((torch.zeros_like(x[:, :1]), x[:, :-1]), dim=1)
         mixed = x * self.mix + shifted * (1.0 - self.mix)
-        return self.output(torch.sigmoid(self.receptance(mixed)) * self.value(torch.tanh(self.key(mixed))))
+        return self.output(
+            torch.sigmoid(self.receptance(mixed))
+            * self.value(torch.tanh(self.key(mixed)))
+        )
 
 
 class RWKVLM(LanguageModel):
@@ -188,7 +208,9 @@ class RWKVLM(LanguageModel):
 
     def __init__(self, config: ArchitectureConfig) -> None:
         super().__init__(config)
-        self.blocks = nn.ModuleList([RWKVTimeMix(config.d_model) for _ in range(config.n_layers)])
+        self.blocks = nn.ModuleList(
+            [RWKVTimeMix(config.d_model) for _ in range(config.n_layers)]
+        )
         self.norm = RMSNorm(config.d_model)
 
     def forward(self, input_ids: Tensor) -> Tensor:
@@ -203,10 +225,12 @@ class ConvLM(LanguageModel):
 
     def __init__(self, config: ArchitectureConfig) -> None:
         super().__init__(config)
-        self.layers = nn.ModuleList([
-            nn.Conv1d(config.d_model, config.d_model, 3, padding=0)
-            for _ in range(config.n_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                nn.Conv1d(config.d_model, config.d_model, 3, padding=0)
+                for _ in range(config.n_layers)
+            ]
+        )
         self.norm = RMSNorm(config.d_model)
 
     def forward(self, input_ids: Tensor) -> Tensor:
@@ -221,9 +245,9 @@ class MoELayer(nn.Module):
     def __init__(self, config: ArchitectureConfig) -> None:
         super().__init__()
         self.router = nn.Linear(config.d_model, config.num_experts)
-        self.experts = nn.ModuleList([
-            SwiGLU(config.d_model, config.d_ff) for _ in range(config.num_experts)
-        ])
+        self.experts = nn.ModuleList(
+            [SwiGLU(config.d_model, config.d_ff) for _ in range(config.num_experts)]
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         weights = torch.softmax(self.router(x), dim=-1)
@@ -255,6 +279,7 @@ class MoELM(LanguageModel):
 
 class GNNLayer(nn.Module):
     """Sequence-neighborhood graph aggregation reference layer."""
+
     def __init__(self, width: int) -> None:
         super().__init__()
         self.self_projection = nn.Linear(width, width)
@@ -270,7 +295,9 @@ class GNNLM(LanguageModel):
 
     def __init__(self, config: ArchitectureConfig) -> None:
         super().__init__(config)
-        self.layers = nn.ModuleList([GNNLayer(config.d_model) for _ in range(config.n_layers)])
+        self.layers = nn.ModuleList(
+            [GNNLayer(config.d_model) for _ in range(config.n_layers)]
+        )
         self.norm = RMSNorm(config.d_model)
 
     def forward(self, input_ids: Tensor) -> Tensor:
@@ -293,5 +320,7 @@ class HybridLM(LanguageModel):
         embedded = self.embed(input_ids)
         transformer_hidden = self.transformer.hidden(input_ids)
         recurrent_hidden, _ = self.recurrent(embedded)
-        fused = torch.tanh(self.fusion(torch.cat((transformer_hidden, recurrent_hidden), dim=-1)))
+        fused = torch.tanh(
+            self.fusion(torch.cat((transformer_hidden, recurrent_hidden), dim=-1))
+        )
         return self.output_head(fused)

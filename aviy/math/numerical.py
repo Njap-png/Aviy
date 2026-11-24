@@ -1,4 +1,5 @@
 """Numerically safe tensor utilities."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -22,11 +23,7 @@ def stable_softmax(value: Tensor, dim: int = -1) -> Tensor:
         raise ValueError("softmax requires at least one dimension")
     if not -value.ndim <= dim < value.ndim:
         raise IndexError("softmax dimension is out of range")
-    work = (
-        value.float()
-        if value.dtype in (torch.float16, torch.bfloat16)
-        else value
-    )
+    work = value.float() if value.dtype in (torch.float16, torch.bfloat16) else value
     result = torch.softmax(work, dim=dim)
     return result.to(dtype=value.dtype)
 

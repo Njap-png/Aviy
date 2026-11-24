@@ -1,4 +1,5 @@
 """Capability-specific evaluation, regression and contamination checks."""
+
 from __future__ import annotations
 
 import hashlib
@@ -12,10 +13,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 EVALUATION_DIMENSIONS = (
-    "knowledge_accuracy", "reasoning", "instruction_following",
-    "language_generation", "programming", "mathematics",
-    "scientific_understanding", "multilingual", "factuality",
-    "uncertainty_calibration", "safety", "efficiency",
+    "knowledge_accuracy",
+    "reasoning",
+    "instruction_following",
+    "language_generation",
+    "programming",
+    "mathematics",
+    "scientific_understanding",
+    "multilingual",
+    "factuality",
+    "uncertainty_calibration",
+    "safety",
+    "efficiency",
 )
 
 
@@ -65,7 +74,8 @@ def check_contamination(
     """Detect exact normalized prompt or expected-answer overlap."""
     training = {normalize_for_comparison(item) for item in training_texts}
     overlaps = [
-        case.case_id for case in suite.cases
+        case.case_id
+        for case in suite.cases
         if normalize_for_comparison(case.prompt) in training
         or normalize_for_comparison(case.expected) in training
     ]
@@ -96,17 +106,18 @@ def run_benchmark(
         prediction = predictor(case.prompt)
         if not isinstance(prediction, str):
             raise TypeError("Predictor must return strings")
-        correct = (
-            normalize_for_comparison(prediction)
-            == normalize_for_comparison(case.expected)
+        correct = normalize_for_comparison(prediction) == normalize_for_comparison(
+            case.expected
         )
         groups[case.dimension].append(correct)
-        outputs.append({
-            "case_id": case.case_id,
-            "dimension": case.dimension,
-            "correct": correct,
-            "prediction": prediction,
-        })
+        outputs.append(
+            {
+                "case_id": case.case_id,
+                "dimension": case.dimension,
+                "correct": correct,
+                "prediction": prediction,
+            }
+        )
 
     elapsed = max(time.perf_counter() - started, 1e-12)
     dimension_metrics = {
@@ -114,11 +125,13 @@ def run_benchmark(
             "cases": len(groups[dimension]),
             "accuracy": (
                 sum(groups[dimension]) / len(groups[dimension])
-                if groups[dimension] else None
+                if groups[dimension]
+                else None
             ),
             "reliability": (
                 sum(groups[dimension]) / len(groups[dimension])
-                if groups[dimension] else None
+                if groups[dimension]
+                else None
             ),
         }
         for dimension in EVALUATION_DIMENSIONS
@@ -166,10 +179,14 @@ def compare_regression(
     old_value = baseline.get("accuracy")
     new_value = candidate.get("accuracy")
     if (
-        isinstance(old_value, bool) or not isinstance(old_value, (int, float))
-        or isinstance(new_value, bool) or not isinstance(new_value, (int, float))
-        or not math.isfinite(old_value) or not math.isfinite(new_value)
-        or not 0.0 <= old_value <= 1.0 or not 0.0 <= new_value <= 1.0
+        isinstance(old_value, bool)
+        or not isinstance(old_value, (int, float))
+        or isinstance(new_value, bool)
+        or not isinstance(new_value, (int, float))
+        or not math.isfinite(old_value)
+        or not math.isfinite(new_value)
+        or not 0.0 <= old_value <= 1.0
+        or not 0.0 <= new_value <= 1.0
     ):
         raise ValueError("Benchmark accuracy values must be finite numbers in [0, 1]")
     old = float(old_value)
@@ -183,9 +200,7 @@ def compare_regression(
     }
 
 
-def write_benchmark_report(
-    report: dict[str, object], path: str | Path
-) -> None:
+def write_benchmark_report(report: dict[str, object], path: str | Path) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(

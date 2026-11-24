@@ -11,6 +11,7 @@ from aviy.agents.runtime import (
     ToolRegistry,
 )
 from aviy.autonomous.self_improvement import (
+    CandidateAdoptionLedger,
     CandidateExperimentRunner,
     ImprovementObjective,
 )
@@ -39,6 +40,7 @@ from aviy.models.specialists import (
 # ============================================================
 # Phase 16: Specialist models
 # ============================================================
+
 
 def test_mathematics_specialist_evaluates_safe_arithmetic():
     specialist = MathematicsSpecialist()
@@ -102,17 +104,13 @@ def test_programming_specialist_uses_static_analysis_only():
 
 
 def test_programming_specialist_flags_dangerous_calls():
-    result = ProgrammingSpecialist().analyze(
-        "value = eval('1 + 1')\n"
-    )
+    result = ProgrammingSpecialist().analyze("value = eval('1 + 1')\n")
     assert "eval" in result.metadata["review_required_calls"]
     assert result.metadata["executed"] is False
 
 
 def test_science_specialist_does_not_claim_unverified_facts():
-    result = ScienceSpecialist().analyze(
-        "Does this experiment prove the hypothesis?"
-    )
+    result = ScienceSpecialist().analyze("Does this experiment prove the hypothesis?")
     assert result.evidence_required is True
     assert result.metadata["validated_claim"] is False
     assert result.confidence == 0.0
@@ -143,9 +141,7 @@ def test_specialist_benchmark_reports_accuracy():
         BenchmarkCase("2 + 2", "4.0"),
         BenchmarkCase("3 * 3", "9.0"),
     ]
-    report = SpecialistBenchmark().evaluate(
-        specialist, cases, minimum_accuracy=1.0
-    )
+    report = SpecialistBenchmark().evaluate(specialist, cases, minimum_accuracy=1.0)
     assert report.passed == 2
     assert report.total == 2
     assert report.accepted is True
@@ -248,6 +244,7 @@ def test_specialist_result_rejects_invalid_confidence():
 # Phase 17: Agents, tools and audit
 # ============================================================
 
+
 def make_tool_registry():
     registry = ToolRegistry()
     registry.register(
@@ -281,9 +278,7 @@ def test_agent_lifecycle_and_message_exchange():
 
 
 def test_agent_cannot_invoke_tool_without_isolation():
-    runtime = AgentRuntime(
-        "agent-a", {"echo"}, make_tool_registry(), AuditTrail()
-    )
+    runtime = AgentRuntime("agent-a", {"echo"}, make_tool_registry(), AuditTrail())
     runtime.start()
 
     with pytest.raises(RuntimeError, match="isolation"):
@@ -291,9 +286,7 @@ def test_agent_cannot_invoke_tool_without_isolation():
 
 
 def test_agent_permission_is_checked_before_tool_execution():
-    runtime = AgentRuntime(
-        "agent-a", set(), make_tool_registry(), AuditTrail()
-    )
+    runtime = AgentRuntime("agent-a", set(), make_tool_registry(), AuditTrail())
     runtime.start()
 
     with pytest.raises(PermissionError):
@@ -334,6 +327,7 @@ def test_task_coordinator_rejects_duplicate_task_ids():
 # ============================================================
 # Phase 18: Research and knowledge acquisition
 # ============================================================
+
 
 def make_acquirer(maximum_bytes=1000):
     return ResourceAcquirer(
@@ -416,9 +410,7 @@ def test_resource_acquirer_rejects_unsafe_uri():
 def test_research_engine_preserves_verification_and_citations():
     content = "A research finding."
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    citation = Citation(
-        "cite-1", "https://example.com/paper", "Paper"
-    )
+    citation = Citation("cite-1", "https://example.com/paper", "Paper")
     source = ResearchSource(
         source_id="source-1",
         uri="https://example.com/data",
@@ -472,6 +464,7 @@ def test_research_engine_rejects_content_hash_mismatch():
 # Phase 19: Candidate self-improvement
 # ============================================================
 
+
 class TestOnlyExperimentBackend:
     """A test double; this does not provide real OS isolation."""
 
@@ -506,9 +499,7 @@ def test_candidate_runner_fails_closed_without_backend(tmp_path):
 
 
 def test_candidate_runner_evaluates_repeated_candidate(tmp_path):
-    runner = CandidateExperimentRunner(
-        tmp_path, TestOnlyExperimentBackend()
-    )
+    runner = CandidateExperimentRunner(tmp_path, TestOnlyExperimentBackend())
     result = runner.evaluate(
         "candidate-1",
         (make_objective(),),
@@ -527,9 +518,7 @@ def test_candidate_runner_evaluates_repeated_candidate(tmp_path):
 
 
 def test_candidate_runner_rejects_insufficient_improvement(tmp_path):
-    runner = CandidateExperimentRunner(
-        tmp_path, TestOnlyExperimentBackend()
-    )
+    runner = CandidateExperimentRunner(tmp_path, TestOnlyExperimentBackend())
     result = runner.evaluate(
         "candidate-2",
         (make_objective(),),
@@ -543,9 +532,7 @@ def test_candidate_runner_rejects_insufficient_improvement(tmp_path):
 
 
 def test_candidate_runner_rejects_non_reproducible_results(tmp_path):
-    runner = CandidateExperimentRunner(
-        tmp_path, TestOnlyExperimentBackend()
-    )
+    runner = CandidateExperimentRunner(tmp_path, TestOnlyExperimentBackend())
 
     def variable_candidate(workspace):
         index = int(workspace.name.split("-")[-1])
@@ -566,6 +553,7 @@ def test_candidate_runner_rejects_non_reproducible_results(tmp_path):
 # ============================================================
 # Phase 20: Secure update management
 # ============================================================
+
 
 def make_manifest(relative_path="component/module.txt", content=b"new content"):
     update_file = UpdateFile(
@@ -889,11 +877,13 @@ def test_specialist_router_routes_each_supported_domain():
         SpecialistRouter,
     )
 
-    router = SpecialistRouter([
-        MathematicsSpecialist(),
-        ProgrammingSpecialist(),
-        ScienceSpecialist(),
-    ])
+    router = SpecialistRouter(
+        [
+            MathematicsSpecialist(),
+            ProgrammingSpecialist(),
+            ScienceSpecialist(),
+        ]
+    )
 
     assert [item.domain for item in router.route("solve this equation")] == [
         "mathematics"
@@ -901,9 +891,7 @@ def test_specialist_router_routes_each_supported_domain():
     assert [item.domain for item in router.route("review this Python code")] == [
         "programming"
     ]
-    assert [item.domain for item in router.route("explain physics")] == [
-        "science"
-    ]
+    assert [item.domain for item in router.route("explain physics")] == ["science"]
 
 
 def test_specialist_router_uses_all_specialists_for_unmatched_prompt():
@@ -914,15 +902,19 @@ def test_specialist_router_uses_all_specialists_for_unmatched_prompt():
         SpecialistRouter,
     )
 
-    router = SpecialistRouter([
-        MathematicsSpecialist(),
-        ProgrammingSpecialist(),
-        ScienceSpecialist(),
-    ])
+    router = SpecialistRouter(
+        [
+            MathematicsSpecialist(),
+            ProgrammingSpecialist(),
+            ScienceSpecialist(),
+        ]
+    )
 
     selected = router.route("Please examine this unfamiliar topic.")
     assert {item.domain for item in selected} == {
-        "mathematics", "programming", "science"
+        "mathematics",
+        "programming",
+        "science",
     }
 
 
@@ -934,17 +926,21 @@ def test_specialist_collaboration_collects_all_routed_results():
         SpecialistRouter,
     )
 
-    router = SpecialistRouter([
-        MathematicsSpecialist(),
-        ProgrammingSpecialist(),
-        ScienceSpecialist(),
-    ])
+    router = SpecialistRouter(
+        [
+            MathematicsSpecialist(),
+            ProgrammingSpecialist(),
+            ScienceSpecialist(),
+        ]
+    )
 
     results = router.collaborate("Please examine this unfamiliar topic.")
 
     assert len(results) == 3
     assert {result.specialist for result in results} == {
-        "mathematics", "programming", "science"
+        "mathematics",
+        "programming",
+        "science",
     }
 
 
@@ -952,16 +948,24 @@ def test_research_engine_rejects_conflicting_duplicate_source_ids():
     first_content = "Original finding."
     second_content = "Different finding."
     first = ResearchSource(
-        "same-id", "https://example.com/one", "First", "MIT",
+        "same-id",
+        "https://example.com/one",
+        "First",
+        "MIT",
         first_content,
         hashlib.sha256(first_content.encode()).hexdigest(),
-        False, "Unverified",
+        False,
+        "Unverified",
     )
     second = ResearchSource(
-        "same-id", "https://example.com/two", "Second", "MIT",
+        "same-id",
+        "https://example.com/two",
+        "Second",
+        "MIT",
         second_content,
         hashlib.sha256(second_content.encode()).hexdigest(),
-        False, "Unverified",
+        False,
+        "Unverified",
     )
     engine = ResearchEngine(
         discover=lambda query: [first, second],
@@ -1016,7 +1020,6 @@ def test_research_engine_requires_boolean_verification_result():
 
     with pytest.raises(TypeError, match="Boolean"):
         engine.run("research question")
-
 
 
 @pytest.mark.parametrize(
@@ -1146,6 +1149,7 @@ def test_phase19_rejects_invalid_objective_values(overrides):
 
 # Additional hardening regression tests
 
+
 def test_candidate_runner_rejects_non_boolean_isolation_flag(tmp_path):
     class InvalidIsolationBackend(TestOnlyExperimentBackend):
         isolation_verified = 1
@@ -1219,7 +1223,8 @@ def test_update_manager_rejects_non_boolean_signature_verification(tmp_path):
 
 
 def test_update_manager_preserves_backup_when_rollback_fails(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     import os
     from pathlib import Path
@@ -1282,11 +1287,120 @@ def test_update_manager_preserves_backup_when_rollback_fails(
             approval=lambda item: True,
         )
 
-    backup_text = str(error.value).split(
-        "Recovery backup preserved at: ", 1
-    )[1]
+    backup_text = str(error.value).split("Recovery backup preserved at: ", 1)[1]
     backup = Path(backup_text)
     assert backup.is_dir()
     assert (backup / "component" / "first.txt").read_bytes() == b"old first"
     assert first.read_bytes() == b"new first"
     assert calls == 3
+
+
+def test_phase19_adoption_ledger_requires_eligible_candidate_and_approval(tmp_path):
+    runner = CandidateExperimentRunner(
+        tmp_path / "experiments",
+        TestOnlyExperimentBackend(),
+    )
+    result = runner.evaluate(
+        "candidate-ledger-approved",
+        (make_objective(),),
+        lambda workspace: {"accuracy": 0.5},
+        lambda workspace: {"accuracy": 0.8},
+        repeats=3,
+    )
+
+    ledger = CandidateAdoptionLedger(tmp_path / "adoption" / "decisions.jsonl")
+    digest = ledger.record_decision(result, approved=True)
+
+    assert len(digest) == 64
+    assert ledger.verify() is True
+
+    with pytest.raises(ValueError, match="already exists"):
+        ledger.record_decision(result, approved=True)
+
+
+def test_phase19_adoption_ledger_rejects_ineligible_candidate(tmp_path):
+    runner = CandidateExperimentRunner(
+        tmp_path / "experiments",
+        TestOnlyExperimentBackend(),
+    )
+    result = runner.evaluate(
+        "candidate-ledger-rejected",
+        (make_objective(),),
+        lambda workspace: {"accuracy": 0.5},
+        lambda workspace: {"accuracy": 0.51},
+        repeats=2,
+    )
+    assert result.adopted_eligible is False
+
+    ledger = CandidateAdoptionLedger(tmp_path / "decisions.jsonl")
+    with pytest.raises(ValueError, match="ineligible"):
+        ledger.record_decision(result, approved=True)
+
+    ledger.record_decision(result, approved=False)
+    assert ledger.verify() is True
+
+
+def test_phase19_adoption_ledger_detects_tampering(tmp_path):
+    runner = CandidateExperimentRunner(
+        tmp_path / "experiments",
+        TestOnlyExperimentBackend(),
+    )
+    result = runner.evaluate(
+        "candidate-ledger-tamper",
+        (make_objective(),),
+        lambda workspace: {"accuracy": 0.5},
+        lambda workspace: {"accuracy": 0.8},
+        repeats=2,
+    )
+
+    path = tmp_path / "decisions.jsonl"
+    ledger = CandidateAdoptionLedger(path)
+    ledger.record_decision(result, approved=True)
+
+    content = path.read_text(encoding="utf-8")
+    path.write_text(
+        content.replace('"approved":true', '"approved":false'), encoding="utf-8"
+    )
+
+    assert ledger.verify() is False
+
+
+def test_phase19_windows_sandbox_backend_never_executes_host_callback(tmp_path):
+    from aviy.agents.runtime import SandboxToolDefinition
+    from aviy.autonomous.self_improvement import WindowsSandboxExperimentBackend
+
+    class FakeExecutor:
+        isolation_verified = True
+
+        def __init__(self):
+            self.calls = []
+
+        def execute(self, tool, arguments, *, timeout_seconds):
+            self.calls.append(tool.name)
+            return {"accuracy": 0.5 if tool.name == "baseline" else 0.8}
+
+    executor = FakeExecutor()
+    baseline = SandboxToolDefinition(
+        name="baseline",
+        script="param($Arguments) @{ accuracy = 0.5 }",
+        required_permission="sandbox.execute",
+    )
+    candidate = SandboxToolDefinition(
+        name="candidate",
+        script="param($Arguments) @{ accuracy = 0.8 }",
+        required_permission="sandbox.execute",
+    )
+    backend = WindowsSandboxExperimentBackend(executor, baseline, candidate)
+
+    def forbidden_host_callback(_workspace):
+        raise AssertionError("The host callback must never execute.")
+
+    result = backend.run(
+        forbidden_host_callback,
+        tmp_path,
+        role="candidate",
+        repeat=0,
+    )
+
+    assert result == {"accuracy": 0.8}
+    assert executor.calls == ["candidate"]

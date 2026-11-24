@@ -24,8 +24,8 @@ scientific = ["scipy>=1.12,<2", "sympy>=1.12,<2"]
 dev = [
     "pytest>=8,<9",
     "ruff>=0.5,<1",
-    "pyright>=1.1,<2"
-]
+    "pyright>=1.1,<2",
+    "httpx2",]
 
 [tool.setuptools.packages.find]
 include = ["aviy*"]
@@ -36,3 +36,9 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 88
 target-version = "py312"
+
+[project.scripts]
+aviy = "aviy.cli.main:app"
+
+[tool.setuptools.package-data]
+"aviy.interfaces.web" = ["*.html"]

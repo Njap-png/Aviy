@@ -1,4 +1,5 @@
 """Planning, step verification and reasoning reliability measurements."""
+
 from __future__ import annotations
 
 import math
@@ -42,7 +43,8 @@ class Planner:
         completed: set[str] = set()
         while remaining:
             ready = [
-                step for step in remaining.values()
+                step
+                for step in remaining.values()
                 if set(step.dependencies).issubset(completed)
             ]
             if not ready:
@@ -75,7 +77,8 @@ def evaluate_reasoning(
     )
     brier = (
         (confidence - float(correctness)) ** 2
-        if expected_correctness is not None else None
+        if expected_correctness is not None
+        else None
     )
     return ReasoningResult(
         answer=answer,

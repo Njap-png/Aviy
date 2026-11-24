@@ -1,4 +1,5 @@
 """Reproducible random seeds and compute-device selection."""
+
 from __future__ import annotations
 
 import random

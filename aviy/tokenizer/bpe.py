@@ -1,4 +1,5 @@
 """Educational byte-level BPE tokenizer trained only on supplied corpus data."""
+
 from __future__ import annotations
 
 import json
@@ -62,16 +63,31 @@ class ByteBPETokenizer:
         vocabulary_size: int = 16384,
         minimum_pair_frequency: int = 2,
     ) -> ByteBPETokenizer:
-        if vocabulary_size < 256:
-            raise ValueError("Byte-level vocabulary must contain at least 256 tokens")
-        if minimum_pair_frequency < 1:
-            raise ValueError("minimum_pair_frequency must be positive")
+        """Train deterministic byte-level BPE from the supplied text corpus."""
+        if (
+            isinstance(vocabulary_size, bool)
+            or not isinstance(vocabulary_size, int)
+            or vocabulary_size < 256
+        ):
+            raise ValueError("vocabulary_size must be an integer of at least 256")
+        if (
+            isinstance(minimum_pair_frequency, bool)
+            or not isinstance(minimum_pair_frequency, int)
+            or minimum_pair_frequency < 1
+        ):
+            raise ValueError("minimum_pair_frequency must be a positive integer")
 
-        sequences = [
-            list(cls.normalize(text).encode("utf-8"))
-            for text in texts
-            if cls.normalize(text)
-        ]
+        try:
+            iterator = iter(texts)
+        except TypeError as exc:
+            raise TypeError("Tokenizer training texts must be iterable") from exc
+
+        sequences = []
+        for text in iterator:
+            normalized = cls.normalize(text)
+            if normalized:
+                sequences.append(list(normalized.encode("utf-8")))
+
         if not sequences:
             raise ValueError("Tokenizer training requires non-empty approved text")
 
@@ -148,18 +164,32 @@ class ByteBPETokenizer:
             _, index = min(candidates)
             pair = (sequence[index], sequence[index + 1])
             merged_id = 256 + self.ranks[pair]
-            sequence[index:index + 2] = [merged_id]
+            sequence[index : index + 2] = [merged_id]
         return sequence
 
     def decode(self, token_ids: Iterable[int]) -> str:
+        """Decode strictly validated integer token IDs into normalized text."""
         pieces: dict[int, bytes] = {index: bytes([index]) for index in range(256)}
         for index, (left, right) in enumerate(self.merges):
             pieces[256 + index] = pieces[left] + pieces[right]
+
         try:
-            raw = b"".join(pieces[int(token)] for token in token_ids)
-        except (KeyError, ValueError) as exc:
-            raise ValueError("Unknown tokenizer token ID") from exc
-        return raw.decode("utf-8")
+            iterator = iter(token_ids)
+        except TypeError as exc:
+            raise TypeError("Token IDs must be an iterable of integers") from exc
+
+        output = []
+        for token in iterator:
+            if isinstance(token, bool) or not isinstance(token, int):
+                raise TypeError("Token IDs must be integers, not booleans or other types")
+            if token not in pieces:
+                raise ValueError(f"Unknown tokenizer token ID: {token}")
+            output.append(pieces[token])
+
+        try:
+            return b"".join(output).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Token IDs do not decode to valid UTF-8 text") from exc
 
     def measure(self, texts: Iterable[str]) -> TokenizerMetrics:
         words = 0
@@ -224,7 +254,8 @@ class ByteBPETokenizer:
                 {"format": "aviy-byte-bpe-v1", "merges": self.merges},
                 ensure_ascii=True,
                 indent=2,
-            ) + "\n",
+            )
+            + "\n",
             encoding="utf-8",
         )
 

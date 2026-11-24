@@ -52,7 +52,9 @@ class MathFoundationTests(unittest.TestCase):
         torch.testing.assert_close(first, second)
 
     def test_device_auto(self):
-        self.assertEqual(get_device("auto").type, "cuda" if torch.cuda.is_available() else "cpu")
+        self.assertEqual(
+            get_device("auto").type, "cuda" if torch.cuda.is_available() else "cpu"
+        )
 
     def test_device_cpu_and_invalid_device(self):
         self.assertEqual(get_device("cpu").type, "cpu")

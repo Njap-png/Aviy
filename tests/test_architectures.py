@@ -11,14 +11,29 @@ class ArchitectureTests(unittest.TestCase):
     def setUp(self):
         set_seed(7)
         self.config = ArchitectureConfig(
-            vocab_size=64, d_model=16, n_layers=1, n_heads=4,
-            d_ff=32, context_length=12, num_experts=3,
+            vocab_size=64,
+            d_model=16,
+            n_layers=1,
+            n_heads=4,
+            d_ff=32,
+            context_length=12,
+            num_experts=3,
         )
         self.tokens = torch.randint(0, 64, (2, 8))
 
     def test_all_registered_architectures(self):
-        expected = {"transformer", "rnn", "gru", "lstm", "ssm",
-                    "rwkv", "cnn", "moe", "gnn", "hybrid"}
+        expected = {
+            "transformer",
+            "rnn",
+            "gru",
+            "lstm",
+            "ssm",
+            "rwkv",
+            "cnn",
+            "moe",
+            "gnn",
+            "hybrid",
+        }
         self.assertEqual(set(ARCHITECTURES.names), expected)
 
     def test_shapes_gradients_parameters_and_serialization(self):
@@ -39,7 +54,9 @@ class ArchitectureTests(unittest.TestCase):
                 restored.eval()
                 model.eval()
                 with torch.no_grad():
-                    torch.testing.assert_close(model(self.tokens), restored(self.tokens))
+                    torch.testing.assert_close(
+                        model(self.tokens), restored(self.tokens)
+                    )
 
     def test_architectures_are_causal(self):
         tokens = self.tokens.clone()

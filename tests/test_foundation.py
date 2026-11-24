@@ -5,13 +5,29 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PACKAGES = [
-    "aviy", "aviy.core", "aviy.models", "aviy.models.architectures",
-    "aviy.tokenizer", "aviy.data", "aviy.learning", "aviy.training",
-    "aviy.cognition", "aviy.memory", "aviy.knowledge", "aviy.agents",
-    "aviy.tools", "aviy.multimodal", "aviy.autonomous", "aviy.evaluation",
-    "aviy.infrastructure", "aviy.security", "aviy.api", "aviy.cli",
+    "aviy",
+    "aviy.core",
+    "aviy.models",
+    "aviy.models.architectures",
+    "aviy.tokenizer",
+    "aviy.data",
+    "aviy.learning",
+    "aviy.training",
+    "aviy.cognition",
+    "aviy.memory",
+    "aviy.knowledge",
+    "aviy.agents",
+    "aviy.tools",
+    "aviy.multimodal",
+    "aviy.autonomous",
+    "aviy.evaluation",
+    "aviy.infrastructure",
+    "aviy.security",
+    "aviy.api",
+    "aviy.cli",
     "aviy.math",
 ]
+
 
 class FoundationTests(unittest.TestCase):
     def test_all_package_imports(self):

@@ -1,4 +1,5 @@
 """Aviy Base decoder-only language model with random initialization."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -23,8 +24,12 @@ class BaseModelConfig:
 
     def validate(self) -> None:
         for name in (
-            "vocab_size", "context_length", "d_model",
-            "n_layers", "n_heads", "d_ff",
+            "vocab_size",
+            "context_length",
+            "d_model",
+            "n_layers",
+            "n_heads",
+            "d_ff",
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
@@ -67,9 +72,8 @@ def apply_rope(value: torch.Tensor) -> torch.Tensor:
     _, _, length, width = value.shape
     positions = torch.arange(length, device=value.device, dtype=torch.float32)
     frequencies = 1.0 / (
-        10000 ** (
-            torch.arange(0, width, 2, device=value.device, dtype=torch.float32) / width
-        )
+        10000
+        ** (torch.arange(0, width, 2, device=value.device, dtype=torch.float32) / width)
     )
     angles = torch.outer(positions, frequencies)
     cosine = angles.cos().to(value.dtype)[None, None, :, :]
@@ -104,9 +108,7 @@ class CausalSelfAttention(nn.Module):
 
     def forward(self, value: torch.Tensor) -> torch.Tensor:
         batch, length, width = value.shape
-        qkv = self.qkv(value).view(
-            batch, length, 3, self.heads, self.head_dim
-        )
+        qkv = self.qkv(value).view(batch, length, 3, self.heads, self.head_dim)
         query, key, content = qkv.permute(2, 0, 3, 1, 4).unbind(0)
         query = apply_rope(query)
         key = apply_rope(key)
@@ -140,16 +142,12 @@ class AviyBaseLM(nn.Module):
         super().__init__()
         self.config = config or BaseModelConfig()
         self.config.validate()
-        self.token_embedding = nn.Embedding(
-            self.config.vocab_size, self.config.d_model
-        )
+        self.token_embedding = nn.Embedding(self.config.vocab_size, self.config.d_model)
         self.blocks = nn.ModuleList(
             [TransformerBlock(self.config) for _ in range(self.config.n_layers)]
         )
         self.final_norm = RMSNorm(self.config.d_model)
-        self.output = nn.Linear(
-            self.config.d_model, self.config.vocab_size, bias=False
-        )
+        self.output = nn.Linear(self.config.d_model, self.config.vocab_size, bias=False)
         if self.config.tie_embeddings:
             self.output.weight = self.token_embedding.weight
         self.apply(self._initialize)
@@ -192,7 +190,5 @@ class AviyBaseLM(nn.Module):
             "trainable_parameters": self.parameter_count(True),
             "initialization": "random",
             "pretrained_weights_loaded": False,
-            "tied_embeddings": (
-                self.output.weight is self.token_embedding.weight
-            ),
+            "tied_embeddings": (self.output.weight is self.token_embedding.weight),
         }

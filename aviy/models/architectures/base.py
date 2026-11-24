@@ -1,4 +1,5 @@
 """Shared language-model architecture contracts."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,8 +20,15 @@ class ArchitectureConfig:
     dropout: float = 0.0
 
     def __post_init__(self) -> None:
-        for name in ("vocab_size", "d_model", "n_layers", "n_heads",
-                     "d_ff", "context_length", "num_experts"):
+        for name in (
+            "vocab_size",
+            "d_model",
+            "n_layers",
+            "n_heads",
+            "d_ff",
+            "context_length",
+            "num_experts",
+        ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
         if self.d_model % self.n_heads:

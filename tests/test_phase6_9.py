@@ -34,14 +34,17 @@ class TokenizerTests(unittest.TestCase):
 
     def test_save_and_load(self):
         tokenizer = ByteBPETokenizer.train(
-            ["alpha beta", "alpha gamma"], vocabulary_size=270,
+            ["alpha beta", "alpha gamma"],
+            vocabulary_size=270,
             minimum_pair_frequency=1,
         )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "tokenizer.json"
             tokenizer.save(path)
             loaded = ByteBPETokenizer.load(path)
-            self.assertEqual(loaded.encode("alpha beta"), tokenizer.encode("alpha beta"))
+            self.assertEqual(
+                loaded.encode("alpha beta"), tokenizer.encode("alpha beta")
+            )
 
     def test_requires_training_text(self):
         with self.assertRaises(ValueError):
@@ -62,19 +65,19 @@ class TokenizerTests(unittest.TestCase):
             source = Path(directory) / "source.jsonl"
             write_jsonl(records, source)
             prepared = audit_dataset(
-                source, Path(directory) / "audit",
-                allowed_licenses=["CC-BY-4.0"], seed=42,
+                source,
+                Path(directory) / "audit",
+                allowed_licenses=["CC-BY-4.0"],
+                seed=42,
             )
             self.assertTrue(prepared["passed"])
             from aviy.data.pipeline import prepare_dataset
-            audited = prepare_dataset(
-                records, allowed_licenses=["CC-BY-4.0"], seed=42
-            )
+
+            audited = prepare_dataset(records, allowed_licenses=["CC-BY-4.0"], seed=42)
             tokenizer = ByteBPETokenizer.train_from_prepared_dataset(
                 audited, vocabulary_size=300, minimum_pair_frequency=1
             )
             self.assertGreaterEqual(tokenizer.vocabulary_size, 256)
-
 
 
 class DatasetAuditTests(unittest.TestCase):
@@ -104,8 +107,12 @@ class DatasetAuditTests(unittest.TestCase):
 class BaseModelTests(unittest.TestCase):
     def test_random_initialization_and_forward(self):
         config = BaseModelConfig(
-            vocab_size=300, context_length=32, d_model=32,
-            n_layers=2, n_heads=4, d_ff=64,
+            vocab_size=300,
+            context_length=32,
+            d_model=32,
+            n_layers=2,
+            n_heads=4,
+            d_ff=64,
         )
         model = AviyBaseLM(config)
         output = model(torch.randint(0, 300, (2, 12)))
@@ -113,14 +120,16 @@ class BaseModelTests(unittest.TestCase):
         self.assertTrue(model.initialization_verified)
         self.assertGreater(model.parameter_count(), 0)
         self.assertFalse(model.configuration_report()["pretrained_weights_loaded"])
-        validate_tokenizer_compatibility(
-            ByteBPETokenizer(), config
-        )
+        validate_tokenizer_compatibility(ByteBPETokenizer(), config)
 
     def test_rejects_incompatible_tokenizer_vocabulary(self):
         config = BaseModelConfig(
-            vocab_size=256, context_length=8, d_model=16,
-            n_layers=1, n_heads=2, d_ff=32,
+            vocab_size=256,
+            context_length=8,
+            d_model=16,
+            n_layers=1,
+            n_heads=2,
+            d_ff=32,
         )
         tokenizer = ByteBPETokenizer([(97, 98)])
         with self.assertRaises(ValueError):
@@ -134,23 +143,31 @@ class BaseModelTests(unittest.TestCase):
 class TrainingEngineTests(unittest.TestCase):
     def test_cpu_smoke_training_and_checkpoint(self):
         torch.manual_seed(42)
-        model = AviyBaseLM(BaseModelConfig(
-            vocab_size=32, context_length=8, d_model=16,
-            n_layers=1, n_heads=2, d_ff=32,
-        ))
+        model = AviyBaseLM(
+            BaseModelConfig(
+                vocab_size=32,
+                context_length=8,
+                d_model=16,
+                n_layers=1,
+                n_heads=2,
+                d_ff=32,
+            )
+        )
         inputs = torch.randint(0, 32, (2, 8))
         targets = torch.randint(0, 32, (2, 8))
         batches = [(inputs, targets)]
         with tempfile.TemporaryDirectory() as directory:
             checkpoint = Path(directory) / "smoke.pt"
             report = train_steps(
-                model, batches, steps=2, device_name="cpu",
+                model,
+                batches,
+                steps=2,
+                device_name="cpu",
                 checkpoint_path=checkpoint,
             )
             self.assertEqual(report["steps"], 2)
             self.assertTrue(checkpoint.exists())
             self.assertTrue(all(torch.isfinite(torch.tensor(report["losses"]))))
-
 
     def test_cpu_training_is_reproducible(self):
         config = BaseModelConfig(
