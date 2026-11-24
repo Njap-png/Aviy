@@ -18,6 +18,7 @@ from aviy.training.checkpoints import (
     atomic_save_checkpoint,
     load_verified_checkpoint,
 )
+from aviy.training.schedules import warmup_cosine_scheduler
 
 
 def resource_report(device: torch.device) -> dict[str, object]:
@@ -42,6 +43,7 @@ def save_checkpoint(
     seed: int,
     scaler: Any = None,
     metadata: dict[str, Any] | None = None,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
 ) -> None:
     if step < 0:
         raise ValueError("Checkpoint step cannot be negative.")
@@ -51,6 +53,7 @@ def save_checkpoint(
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
         "scaler": scaler.state_dict() if scaler is not None else {},
+        "scheduler": scheduler.state_dict() if scheduler is not None else {},
         "step": step,
         "seed": seed,
         "metadata": metadata or {},
@@ -70,23 +73,26 @@ def load_checkpoint(
     optimizer: torch.optim.Optimizer,
     scaler: Any = None,
     map_location: str | torch.device = "cpu",
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
 ) -> dict[str, Any]:
-    # Keep RNG tensors on CPU; optimizer.load_state_dict transfers optimizer
-    # state to the parameter devices as required by PyTorch.
-    del map_location
-    payload = load_verified_checkpoint(path, map_location="cpu")
+    payload = load_verified_checkpoint(path, map_location=map_location)
     model.load_state_dict(payload["model"])
     optimizer.load_state_dict(payload["optimizer"])
 
     if scaler is not None and payload.get("scaler"):
         scaler.load_state_dict(payload["scaler"])
+    if scheduler is not None:
+        scheduler_state = payload.get("scheduler")
+        if not isinstance(scheduler_state, dict) or not scheduler_state:
+            raise ValueError("Checkpoint does not contain scheduler state.")
+        scheduler.load_state_dict(scheduler_state)
 
     random.setstate(payload["python_rng"])
-    torch.set_rng_state(payload["torch_rng"])
+    torch.set_rng_state(payload["torch_rng"].cpu())
 
     cuda_rng = payload.get("cuda_rng")
     if cuda_rng is not None and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(cuda_rng)
+        torch.cuda.set_rng_state_all([state.cpu() for state in cuda_rng])
 
     return payload
 
@@ -102,6 +108,9 @@ def train_steps(
     precision: str = "auto",
     checkpoint_path: str | Path | None = None,
     resume_from_checkpoint: str | Path | None = None,
+    scheduler_total_steps: int | None = None,
+    scheduler_warmup_steps: int = 0,
+    minimum_learning_rate_ratio: float = 0.0,
 ) -> dict[str, object]:
     if isinstance(steps, bool) or not isinstance(steps, int) or steps < 1:
         raise ValueError("steps must be a positive integer")
@@ -117,9 +126,42 @@ def train_steps(
     if precision not in {"auto", "fp32", "fp16", "bf16"}:
         raise ValueError("Unsupported precision")
 
+    if (
+        isinstance(scheduler_warmup_steps, bool)
+        or not isinstance(scheduler_warmup_steps, int)
+        or scheduler_warmup_steps < 0
+    ):
+        raise ValueError("scheduler_warmup_steps must be a non-negative integer")
+    if scheduler_total_steps is None:
+        if scheduler_warmup_steps != 0 or minimum_learning_rate_ratio != 0.0:
+            raise ValueError("Scheduler options require scheduler_total_steps")
+    elif (
+        isinstance(scheduler_total_steps, bool)
+        or not isinstance(scheduler_total_steps, int)
+        or scheduler_total_steps <= scheduler_warmup_steps
+    ):
+        raise ValueError("scheduler_total_steps must exceed warmup steps")
+    if (
+        isinstance(minimum_learning_rate_ratio, bool)
+        or not isinstance(minimum_learning_rate_ratio, (int, float))
+        or not math.isfinite(minimum_learning_rate_ratio)
+        or not 0.0 <= minimum_learning_rate_ratio <= 1.0
+    ):
+        raise ValueError("minimum_learning_rate_ratio must be in [0, 1]")
+
     device = get_device(device_name)
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    scheduler = (
+        warmup_cosine_scheduler(
+            optimizer,
+            warmup_steps=scheduler_warmup_steps,
+            total_steps=scheduler_total_steps,
+            minimum_ratio=minimum_learning_rate_ratio,
+        )
+        if scheduler_total_steps is not None
+        else None
+    )
 
     use_amp = precision != "fp32" and device.type == "cuda"
     amp_dtype = torch.float16 if precision in {"auto", "fp16"} else torch.bfloat16
@@ -132,6 +174,18 @@ def train_steps(
     batch_cache = list(batches)
     if not batch_cache:
         raise ValueError("Training batches are empty")
+    for index, batch in enumerate(batch_cache):
+        if not isinstance(batch, (tuple, list)) or len(batch) != 2:
+            raise TypeError(f"Batch {index} must contain inputs and targets")
+        inputs, targets = batch
+        if not isinstance(inputs, torch.Tensor) or not isinstance(targets, torch.Tensor):
+            raise TypeError(f"Batch {index} inputs and targets must be tensors")
+        if inputs.dtype != torch.long or targets.dtype != torch.long:
+            raise TypeError(f"Batch {index} tensors must use torch.long")
+        if inputs.ndim != 2 or targets.shape != inputs.shape or inputs.numel() == 0:
+            raise ValueError(f"Batch {index} must have matching non-empty [batch, sequence] shapes")
+        if torch.any(inputs < 0) or torch.any(targets < 0):
+            raise ValueError(f"Batch {index} contains negative token IDs")
 
     start_step = 0
     batch_position = 0
@@ -144,6 +198,7 @@ def train_steps(
             model=model,
             optimizer=optimizer,
             scaler=scaler,
+            scheduler=scheduler,
         )
         start_step = restored["step"]
         seed = restored["seed"]
@@ -175,6 +230,14 @@ def train_steps(
             enabled=use_amp,
         ):
             logits = model(inputs)
+            if not isinstance(logits, torch.Tensor) or logits.ndim != 3:
+                raise ValueError("Model output must have [batch, sequence, vocabulary] shape")
+            if logits.shape[:2] != targets.shape:
+                raise ValueError("Model output and target batch/sequence shapes differ")
+            if logits.shape[-1] < 1 or not logits.is_floating_point():
+                raise ValueError("Model output must contain floating-point vocabulary logits")
+            if torch.any(targets >= logits.shape[-1]):
+                raise ValueError("Target token ID exceeds model vocabulary size")
             loss = nn.functional.cross_entropy(
                 logits.reshape(-1, logits.shape[-1]),
                 targets.reshape(-1),
@@ -190,6 +253,8 @@ def train_steps(
             raise FloatingPointError("Non-finite gradient norm")
         scaler.step(optimizer)
         scaler.update()
+        if scheduler is not None:
+            scheduler.step()
         losses.append(float(loss.detach().cpu()))
 
     global_step = start_step + steps
@@ -203,6 +268,7 @@ def train_steps(
             step=global_step,
             seed=seed,
             scaler=scaler,
+            scheduler=scheduler,
             metadata={
                 "precision": precision,
                 "batch_position": next_batch_position,
@@ -219,6 +285,8 @@ def train_steps(
         "resumed_from_step": start_step,
         "seed": seed,
         "learning_rate": learning_rate,
+        "final_learning_rate": optimizer.param_groups[0]["lr"],
+        "scheduler_enabled": scheduler is not None,
         "precision": precision,
         "losses": losses,
         "initial_loss": losses[0],

@@ -5,8 +5,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Callable, Mapping
 
 SUPPORTED_MODALITIES = ("image", "document", "audio", "speech", "video")
 
@@ -148,6 +148,8 @@ class MultimodalWorkbench:
         if not isinstance(metrics, dict) or not metrics:
             raise ValueError("Evaluator must return a non-empty metrics dictionary.")
         safe_metrics = _json_copy(metrics)
+        if not isinstance(safe_metrics, dict):
+            raise TypeError("Evaluator metrics must serialize to a dictionary.")
         return EvaluationReport(
             dataset.modality, dataset.fingerprint, len(dataset.samples), safe_metrics
         )

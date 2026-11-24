@@ -92,13 +92,21 @@ def run_benchmark(
     predictor: Callable[[str], str],
     *,
     seed: int = 42,
+    repeatability_runs: int = 2,
 ) -> dict[str, object]:
     """Run exact-match evaluation with all 12 dimension reports."""
     suite.validate()
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
         raise ValueError("seed must be a non-negative integer")
+    if (
+        isinstance(repeatability_runs, bool)
+        or not isinstance(repeatability_runs, int)
+        or repeatability_runs < 1
+    ):
+        raise ValueError("repeatability_runs must be a positive integer")
 
     groups: dict[str, list[bool]] = defaultdict(list)
+    repeatability_groups: dict[str, list[bool]] = defaultdict(list)
     outputs: list[dict[str, object]] = []
     started = time.perf_counter()
 
@@ -106,16 +114,29 @@ def run_benchmark(
         prediction = predictor(case.prompt)
         if not isinstance(prediction, str):
             raise TypeError("Predictor must return strings")
+        repeated_predictions = [prediction]
+        for _ in range(repeatability_runs - 1):
+            repeated = predictor(case.prompt)
+            if not isinstance(repeated, str):
+                raise TypeError("Predictor must return strings")
+            repeated_predictions.append(repeated)
+        repeatable = all(
+            normalize_for_comparison(item) == normalize_for_comparison(prediction)
+            for item in repeated_predictions[1:]
+        )
         correct = normalize_for_comparison(prediction) == normalize_for_comparison(
             case.expected
         )
         groups[case.dimension].append(correct)
+        repeatability_groups[case.dimension].append(repeatable)
         outputs.append(
             {
                 "case_id": case.case_id,
                 "dimension": case.dimension,
                 "correct": correct,
                 "prediction": prediction,
+                "repeat_predictions": repeated_predictions,
+                "repeatable": repeatable,
             }
         )
 
@@ -131,6 +152,11 @@ def run_benchmark(
             "reliability": (
                 sum(groups[dimension]) / len(groups[dimension])
                 if groups[dimension]
+                else None
+            ),
+            "repeatability": (
+                sum(repeatability_groups[dimension]) / len(repeatability_groups[dimension])
+                if repeatability_groups[dimension]
                 else None
             ),
         }
@@ -149,6 +175,8 @@ def run_benchmark(
         "cases": len(outputs),
         "accuracy": correct_count / len(outputs),
         "reliability": correct_count / len(outputs),
+        "repeatability": sum(bool(item["repeatable"]) for item in outputs) / len(outputs),
+        "repeatability_runs": repeatability_runs,
         "elapsed_seconds": elapsed,
         "cases_per_second": len(outputs) / elapsed,
         "dimensions": dimension_metrics,
@@ -156,7 +184,7 @@ def run_benchmark(
         "reproducibility_fingerprint": hashlib.sha256(
             canonical.encode("utf-8")
         ).hexdigest(),
-        "metric_note": "Reliability is exact-match success rate in this baseline.",
+        "metric_note": "Reliability remains exact-match success rate; repeatability measures agreement across repeated predictor calls.",
     }
 
 

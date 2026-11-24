@@ -5,24 +5,25 @@ import threading
 import pytest
 
 from aviy.multimodal.pipelines import (
+    SUPPORTED_MODALITIES,
+    ModalityDataset,
     ModalityInterface,
     ModalitySample,
-    ModalityDataset,
-    SUPPORTED_MODALITIES,
     MultimodalWorkbench,
 )
 from aviy.research.programs import compare_benchmarks
 from aviy.security.durable_governance import (
     DurableGovernanceLedger,
     GovernedRecovery,
+    LedgerIntegrityError,
 )
 from aviy.security.governance import (
-    Principal,
     DualApproval,
+    EnvironmentSecretResolver,
+    FilesystemBoundary,
     GovernanceLedger,
     NetworkPolicy,
-    FilesystemBoundary,
-    EnvironmentSecretResolver,
+    Principal,
 )
 
 KEY = b"batch-two-governance-integrity-key"
@@ -123,7 +124,7 @@ def test_durable_ledger_instances_share_thread_lock(tmp_path):
         try:
             for index in range(20):
                 ledger.append(prefix, "event", {"index": index})
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, LedgerIntegrityError) as exc:
             errors.append(exc)
 
     threads = [
