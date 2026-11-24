@@ -61,7 +61,7 @@ verification and explicit authorization to change its checkbox.
 
 ## Phase 9 — Training and GPU infrastructure
 - [ ] Implement local CPU training
-- [ ] Implement Colab-compatible GPU training
+- [x] Implement Colab-compatible GPU training
 - [ ] Implement mixed precision and resource monitoring
 
 **Acceptance criteria:** Reproducible CPU smoke training and supported GPU smoke training pass.
