@@ -5,9 +5,10 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import TypedDict
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,8 @@ class UpdateManifest:
     files: tuple[UpdateFile, ...]
     signature: bytes
     signed_payload: bytes
+    provenance: str = "local"
+    target_type: str = "component"
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,13 @@ class UpdateResult:
     update_id: str
     applied: tuple[str, ...]
     rolled_back: bool
+    backup_id: str | None = None
+
+
+class _UpdateTransaction(TypedDict):
+    backup: Path
+    applied: tuple[Path, ...]
+    backed_up: frozenset[Path]
 
 
 def canonical_manifest_payload(manifest: UpdateManifest) -> bytes:
@@ -39,6 +49,8 @@ def canonical_manifest_payload(manifest: UpdateManifest) -> bytes:
         "update_id": manifest.update_id,
         "component": manifest.component,
         "version": manifest.version,
+        "provenance": manifest.provenance,
+        "target_type": manifest.target_type,
         "files": [
             {
                 "relative_path": item.relative_path,
@@ -48,17 +60,23 @@ def canonical_manifest_payload(manifest: UpdateManifest) -> bytes:
         ],
     }
     return json.dumps(
-        body, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        body,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
     ).encode("utf-8")
 
 
 class UpdateManager:
+    """Verifies, stages, applies and rolls back explicitly approved updates."""
+
     def __init__(
         self,
         root: str | Path,
         *,
         trusted_signature_verifier: Callable[[bytes, bytes], bool] | None,
         allowed_components: set[str],
+        allowed_dependencies: set[str] | None = None,
     ) -> None:
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
@@ -67,12 +85,20 @@ class UpdateManager:
         ):
             raise TypeError("Trusted signature verifier must be callable.")
         if not isinstance(allowed_components, set) or any(
-            not isinstance(item, str) or not item.strip()
-            for item in allowed_components
+            not isinstance(item, str) or not item.strip() for item in allowed_components
         ):
             raise ValueError("Allowed components must be a set of non-empty strings.")
+        if allowed_dependencies is None:
+            allowed_dependencies = set()
+        if not isinstance(allowed_dependencies, set) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in allowed_dependencies
+        ):
+            raise ValueError("Allowed dependencies must be a set of non-empty strings.")
         self._verify_signature = trusted_signature_verifier
         self._allowed_components = frozenset(allowed_components)
+        self._allowed_dependencies = frozenset(allowed_dependencies)
+        self._transactions: dict[str, _UpdateTransaction] = {}
 
     @staticmethod
     def _safe_relative_path(value: str) -> Path:
@@ -80,8 +106,13 @@ class UpdateManager:
             raise TypeError("Update path must be a string.")
         path = PurePosixPath(value)
         if (
-            not value or path.is_absolute() or ".." in path.parts
-            or "\\" in value or ":" in value or not path.parts
+            not value
+            or path.is_absolute()
+            or ".." in path.parts
+            or "\\" in value
+            or ":" in value
+            or not path.parts
+            or any(part in ("", ".", "..") for part in path.parts)
         ):
             raise ValueError("Unsafe update path.")
         return Path(*path.parts)
@@ -94,24 +125,29 @@ class UpdateManager:
             if current.is_symlink():
                 raise ValueError("Update destination contains a symbolic link.")
         resolved = destination.resolve()
-        if self.root not in resolved.parents:
+        if resolved != self.root and self.root not in resolved.parents:
             raise ValueError("Update path escapes the installation root.")
         return destination
 
     def verify(self, manifest: UpdateManifest) -> None:
         if not isinstance(manifest, UpdateManifest):
             raise TypeError("An UpdateManifest is required.")
-        if (
-            not isinstance(manifest.update_id, str)
-            or not manifest.update_id.strip()
-            or not isinstance(manifest.version, str)
-            or not manifest.version.strip()
-            or not isinstance(manifest.component, str)
-            or not manifest.component.strip()
+        for name, value in (
+            ("update identity", manifest.update_id),
+            ("component or dependency", manifest.component),
+            ("version", manifest.version),
+            ("provenance", manifest.provenance),
         ):
-            raise ValueError("Update identity, component and version are required strings.")
-        if manifest.component not in self._allowed_components:
-            raise PermissionError("Component is not approved for updating.")
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"Update {name} is required as a non-empty string.")
+        if manifest.target_type not in ("component", "dependency"):
+            raise ValueError("Unsupported update target type.")
+        if manifest.target_type == "component":
+            if manifest.component not in self._allowed_components:
+                raise PermissionError("Component is not approved for updating.")
+        elif manifest.component not in self._allowed_dependencies:
+            raise PermissionError("Dependency is not approved for updating.")
+
         if not isinstance(manifest.files, tuple) or not manifest.files:
             raise ValueError("Update files must be a non-empty tuple.")
         if not isinstance(manifest.signature, bytes) or not manifest.signature:
@@ -148,6 +184,47 @@ class UpdateManager:
         if verified is not True:
             raise PermissionError("Update signature verification failed.")
 
+    def discover(
+        self,
+        provider: Callable[[], Iterable[UpdateManifest]],
+        *,
+        target_type: str,
+    ) -> tuple[UpdateManifest, ...]:
+        """Discover candidates from an explicitly configured trusted catalogue."""
+        if not callable(provider):
+            raise TypeError("Update discovery provider must be callable.")
+        if target_type not in ("component", "dependency"):
+            raise ValueError("Unsupported update discovery target.")
+        candidates = provider()
+        if isinstance(candidates, (str, bytes, dict)) or not isinstance(
+            candidates, Iterable
+        ):
+            raise TypeError("Discovery provider must return an iterable of manifests.")
+
+        verified: list[UpdateManifest] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            if not isinstance(candidate, UpdateManifest):
+                raise TypeError("Discovery returned an invalid update manifest.")
+            if candidate.target_type != target_type:
+                raise ValueError("Discovery returned the wrong update target type.")
+            if candidate.update_id in seen:
+                raise ValueError("Discovery returned duplicate update IDs.")
+            self.verify(candidate)
+            seen.add(candidate.update_id)
+            verified.append(candidate)
+        return tuple(verified)
+
+    def discover_components(
+        self, provider: Callable[[], Iterable[UpdateManifest]]
+    ) -> tuple[UpdateManifest, ...]:
+        return self.discover(provider, target_type="component")
+
+    def discover_dependencies(
+        self, provider: Callable[[], Iterable[UpdateManifest]]
+    ) -> tuple[UpdateManifest, ...]:
+        return self.discover(provider, target_type="dependency")
+
     def apply(
         self,
         manifest: UpdateManifest,
@@ -158,14 +235,14 @@ class UpdateManager:
         self.verify(manifest)
         if not callable(compatibility_check):
             raise TypeError("Compatibility check must be callable.")
-        compatible = compatibility_check(manifest)
-        if compatible is not True:
+        if compatibility_check(manifest) is not True:
             raise ValueError("Update is incompatible with this installation.")
         if approval is None or not callable(approval):
             raise PermissionError("Explicit update approval is required.")
-        approved = approval(manifest)
-        if approved is not True:
+        if approval(manifest) is not True:
             raise PermissionError("Explicit update approval is required.")
+        if manifest.update_id in self._transactions:
+            raise ValueError("This update has already been applied.")
 
         stage = Path(tempfile.mkdtemp(prefix=".aviy-stage-", dir=self.root))
         backup = Path(tempfile.mkdtemp(prefix=".aviy-backup-", dir=self.root))
@@ -173,6 +250,7 @@ class UpdateManager:
         backed_up: set[Path] = set()
         preserve_backup = False
         try:
+            # Stage and hash-check every file before changing the installation.
             for item in manifest.files:
                 relative = self._safe_relative_path(item.relative_path)
                 staged = stage / relative
@@ -187,6 +265,8 @@ class UpdateManager:
                 staged = stage / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 if destination.exists():
+                    if not destination.is_file():
+                        raise ValueError("Update destination is not a regular file.")
                     saved = backup / relative
                     saved.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(destination, saved)
@@ -194,10 +274,18 @@ class UpdateManager:
                 os.replace(staged, destination)
                 applied.append(relative)
 
+            # Keep the backup until an explicit rollback or later retention policy.
+            self._transactions[manifest.update_id] = {
+                "backup": backup,
+                "applied": tuple(applied),
+                "backed_up": frozenset(backed_up),
+            }
+            preserve_backup = True
             return UpdateResult(
                 manifest.update_id,
                 tuple(path.as_posix() for path in applied),
                 False,
+                manifest.update_id,
             )
         except Exception:
             rollback_errors: list[Exception] = []
@@ -209,7 +297,7 @@ class UpdateManager:
                         os.replace(saved, destination)
                     else:
                         destination.unlink(missing_ok=True)
-                except Exception as exc:  # noqa: BLE001 - preserve rollback failure details
+                except Exception as exc:  # noqa: BLE001 - rollback must collect every restoration failure
                     rollback_errors.append(exc)
             if rollback_errors:
                 preserve_backup = True
@@ -222,3 +310,46 @@ class UpdateManager:
             shutil.rmtree(stage, ignore_errors=True)
             if not preserve_backup:
                 shutil.rmtree(backup, ignore_errors=True)
+
+    def rollback(self, update_id: str) -> UpdateResult:
+        """Restore the pre-update files for a successfully applied update."""
+        if not isinstance(update_id, str) or not update_id.strip():
+            raise ValueError("Update ID is required.")
+        transaction = self._transactions.get(update_id)
+        if transaction is None:
+            raise KeyError(f"No reversible applied update: {update_id}")
+
+        backup = transaction["backup"]
+        applied = transaction["applied"]
+        backed_up = transaction["backed_up"]
+        if not isinstance(backup, Path):
+            raise TypeError("Update recovery backup metadata is invalid.")
+
+        errors: list[Exception] = []
+        restored: list[str] = []
+        for relative in reversed(applied):
+            try:
+                if not isinstance(relative, Path):
+                    raise TypeError("Update recovery path metadata is invalid.")
+                destination = self._validate_destination(relative)
+                saved = backup / relative
+                if relative in backed_up:
+                    if not saved.is_file() or saved.is_symlink():
+                        raise RuntimeError(f"Recovery file is missing: {relative}")
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(saved, destination)
+                else:
+                    destination.unlink(missing_ok=True)
+                restored.append(relative.as_posix())
+            except Exception as exc:  # noqa: BLE001 - continue rollback and collect all restoration errors
+                errors.append(exc)
+
+        if errors:
+            raise RuntimeError(
+                "Update rollback was incomplete; recovery backup preserved at: "
+                f"{backup}"
+            ) from errors[0]
+
+        shutil.rmtree(backup, ignore_errors=True)
+        del self._transactions[update_id]
+        return UpdateResult(update_id, tuple(restored), True, update_id)

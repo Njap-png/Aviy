@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Protocol
+from typing import Protocol, cast
 
 MAX_MESSAGE_LENGTH = 1_000_000
 MAX_TOOL_ARGUMENT_BYTES = 1_000_000
@@ -71,10 +71,43 @@ class ToolDefinition:
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("Tool name is required.")
-        if not isinstance(self.required_permission, str) or not self.required_permission.strip():
+        if (
+            not isinstance(self.required_permission, str)
+            or not self.required_permission.strip()
+        ):
             raise ValueError("Tool permission is required.")
         if not callable(self.handler):
             raise TypeError("Tool handler must be callable.")
+        if (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, (int, float))
+            or not math.isfinite(self.timeout_seconds)
+            or self.timeout_seconds <= 0
+        ):
+            raise ValueError("Tool timeout must be finite and positive.")
+
+
+@dataclass(frozen=True)
+class SandboxToolDefinition:
+    """Serializable PowerShell tool definition for an OS sandbox executor."""
+
+    name: str
+    script: str
+    required_permission: str
+    timeout_seconds: float = 10.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("Tool name is required.")
+        if not isinstance(self.script, str) or not self.script.strip():
+            raise ValueError("Sandbox tool script is required.")
+        if len(self.script.encode("utf-8")) > MAX_TOOL_ARGUMENT_BYTES:
+            raise ValueError("Sandbox tool script exceeds the size limit.")
+        if (
+            not isinstance(self.required_permission, str)
+            or not self.required_permission.strip()
+        ):
+            raise ValueError("Tool permission is required.")
         if (
             isinstance(self.timeout_seconds, bool)
             or not isinstance(self.timeout_seconds, (int, float))
@@ -97,20 +130,35 @@ class OSIsolationBackend(Protocol):
     ) -> dict[str, object]: ...
 
 
+class SandboxIsolationBackend(Protocol):
+    @property
+    def isolation_verified(self) -> bool: ...
+
+    def execute(
+        self,
+        tool: SandboxToolDefinition,
+        arguments: dict[str, object],
+        *,
+        timeout_seconds: float,
+    ) -> dict[str, object]: ...
+
+
 class ToolRegistry:
     def __init__(self) -> None:
-        self._tools: dict[str, ToolDefinition] = {}
+        self._tools: dict[str, ToolDefinition | SandboxToolDefinition] = {}
         self._lock = threading.RLock()
 
-    def register(self, tool: ToolDefinition) -> None:
-        if not isinstance(tool, ToolDefinition):
-            raise TypeError("Only ToolDefinition instances can be registered.")
+    def register(self, tool: ToolDefinition | SandboxToolDefinition) -> None:
+        if not isinstance(tool, (ToolDefinition, SandboxToolDefinition)):
+            raise TypeError(
+                "Only ToolDefinition or SandboxToolDefinition instances can be registered."
+            )
         with self._lock:
             if tool.name in self._tools:
                 raise ValueError(f"Tool already registered: {tool.name}")
             self._tools[tool.name] = tool
 
-    def get(self, name: str) -> ToolDefinition:
+    def get(self, name: str) -> ToolDefinition | SandboxToolDefinition:
         with self._lock:
             try:
                 return self._tools[name]
@@ -168,10 +216,7 @@ class AuditTrail:
             for index, event in enumerate(self._events):
                 if not isinstance(event, dict):
                     return False
-                body = {
-                    key: value for key, value in event.items()
-                    if key != "hash"
-                }
+                body = {key: value for key, value in event.items() if key != "hash"}
                 if body.get("sequence") != index:
                     return False
                 if body.get("previous_hash") != previous:
@@ -216,13 +261,15 @@ class AgentTask:
 class TaskCoordinator:
     """Tracks task assignment and explicit, validated lifecycle transitions."""
 
-    _TRANSITIONS = MappingProxyType({
-        "queued": frozenset({"running", "cancelled"}),
-        "running": frozenset({"completed", "failed", "cancelled"}),
-        "completed": frozenset(),
-        "failed": frozenset(),
-        "cancelled": frozenset(),
-    })
+    _TRANSITIONS = MappingProxyType(
+        {
+            "queued": frozenset({"running", "cancelled"}),
+            "running": frozenset({"completed", "failed", "cancelled"}),
+            "completed": frozenset(),
+            "failed": frozenset(),
+            "cancelled": frozenset(),
+        }
+    )
 
     def __init__(self, audit: AuditTrail | None = None) -> None:
         self._tasks: dict[str, AgentTask] = {}
@@ -237,10 +284,13 @@ class TaskCoordinator:
             if task.task_id in self._tasks:
                 raise ValueError("Task ID already exists.")
             if self._audit is not None:
-                self._audit.record("task_assigned", {
-                    "task_id": task.task_id,
-                    "agent": task.assigned_agent,
-                })
+                self._audit.record(
+                    "task_assigned",
+                    {
+                        "task_id": task.task_id,
+                        "agent": task.assigned_agent,
+                    },
+                )
             self._tasks[task.task_id] = task
             self._statuses[task.task_id] = "queued"
 
@@ -258,15 +308,16 @@ class TaskCoordinator:
                 raise KeyError(f"Unknown task: {task_id}")
             current = self._statuses[task_id]
             if new_status not in self._TRANSITIONS.get(current, set()):
-                raise ValueError(
-                    f"Invalid task transition: {current} -> {new_status}"
-                )
+                raise ValueError(f"Invalid task transition: {current} -> {new_status}")
             if self._audit is not None:
-                self._audit.record("task_status_changed", {
-                    "task_id": task_id,
-                    "previous_status": current,
-                    "new_status": new_status,
-                })
+                self._audit.record(
+                    "task_status_changed",
+                    {
+                        "task_id": task_id,
+                        "previous_status": current,
+                        "new_status": new_status,
+                    },
+                )
             self._statuses[task_id] = new_status
 
     @property
@@ -282,7 +333,7 @@ class AgentRuntime:
         permissions: set[str],
         tools: ToolRegistry,
         audit: AuditTrail,
-        executor: OSIsolationBackend | None = None,
+        executor: OSIsolationBackend | SandboxIsolationBackend | None = None,
     ) -> None:
         if not isinstance(agent_id, str) or not agent_id.strip():
             raise ValueError("Agent ID is required.")
@@ -334,32 +385,36 @@ class AgentRuntime:
             (self, recipient), key=lambda item: (item.agent_id, id(item))
         )
         with first._lock, second._lock:
-                if not self._active or not recipient._active:
-                    raise RuntimeError("Both agents must be active.")
-                message = AgentMessage(
-                    self.agent_id, recipient.agent_id, content, time.time()
-                )
-                self.audit.record("message_sent", {
+            if not self._active or not recipient._active:
+                raise RuntimeError("Both agents must be active.")
+            message = AgentMessage(
+                self.agent_id, recipient.agent_id, content, time.time()
+            )
+            self.audit.record(
+                "message_sent",
+                {
                     "sender": self.agent_id,
                     "recipient": recipient.agent_id,
-                })
-                recipient._inbox.append(message)
+                },
+            )
+            recipient._inbox.append(message)
 
     def receive(self) -> tuple[AgentMessage, ...]:
         with self._lock:
             if not self._active:
                 raise RuntimeError("Agent is not active.")
             messages = tuple(self._inbox)
-            self.audit.record("messages_received", {
-                "agent": self.agent_id,
-                "count": len(messages),
-            })
+            self.audit.record(
+                "messages_received",
+                {
+                    "agent": self.agent_id,
+                    "count": len(messages),
+                },
+            )
             self._inbox.clear()
             return messages
 
-    def invoke(
-        self, tool_name: str, arguments: dict[str, object]
-    ) -> dict[str, object]:
+    def invoke(self, tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
         with self._lock:
             if not self._active:
                 raise RuntimeError("Agent is not active.")
@@ -367,17 +422,23 @@ class AgentRuntime:
         tool = self.tools.get(tool_name)
 
         if tool.required_permission not in self.permissions:
-            self.audit.record("tool_denied", {
-                "agent": self.agent_id,
-                "tool": tool_name,
-            })
+            self.audit.record(
+                "tool_denied",
+                {
+                    "agent": self.agent_id,
+                    "tool": tool_name,
+                },
+            )
             raise PermissionError("Agent lacks the required tool permission.")
 
         if self.executor is None:
-            self.audit.record("tool_blocked_no_isolation", {
-                "agent": self.agent_id,
-                "tool": tool_name,
-            })
+            self.audit.record(
+                "tool_blocked_no_isolation",
+                {
+                    "agent": self.agent_id,
+                    "tool": tool_name,
+                },
+            )
             raise RuntimeError(
                 "Tool execution blocked: a verified OS-isolation backend is required."
             )
@@ -385,18 +446,24 @@ class AgentRuntime:
         try:
             isolation_verified = self.executor.isolation_verified
         except Exception as exc:
-            self.audit.record("tool_blocked_isolation_error", {
-                "agent": self.agent_id,
-                "tool": tool_name,
-                "error_type": type(exc).__name__,
-            })
+            self.audit.record(
+                "tool_blocked_isolation_error",
+                {
+                    "agent": self.agent_id,
+                    "tool": tool_name,
+                    "error_type": type(exc).__name__,
+                },
+            )
             raise RuntimeError("Isolation backend verification failed.") from exc
 
         if isolation_verified is not True:
-            self.audit.record("tool_blocked_no_isolation", {
-                "agent": self.agent_id,
-                "tool": tool_name,
-            })
+            self.audit.record(
+                "tool_blocked_no_isolation",
+                {
+                    "agent": self.agent_id,
+                    "tool": tool_name,
+                },
+            )
             raise RuntimeError(
                 "Tool execution blocked: a verified OS-isolation backend is required."
             )
@@ -404,35 +471,66 @@ class AgentRuntime:
         if not isinstance(arguments, dict):
             raise TypeError("Tool arguments must be a dictionary.")
 
-        safe_arguments = _json_copy(
+        copied_arguments = _json_copy(
             arguments, maximum_bytes=MAX_TOOL_ARGUMENT_BYTES
         )
-        self.audit.record("tool_started", {
-            "agent": self.agent_id,
-            "tool": tool_name,
-        })
+        if not isinstance(copied_arguments, dict) or any(
+            not isinstance(key, str) for key in copied_arguments
+        ):
+            raise TypeError("Serialized tool arguments must be a string-keyed object.")
+        safe_arguments: dict[str, object] = copied_arguments
 
-        try:
-            result = self.executor.execute(
-                tool,
-                safe_arguments,
-                timeout_seconds=tool.timeout_seconds,
-            )
-            if not isinstance(result, dict):
-                raise TypeError("Isolated tools must return a dictionary.")
-            safe_result = _json_copy(
-                result, maximum_bytes=MAX_TOOL_RESULT_BYTES
-            )
-        except Exception as exc:
-            self.audit.record("tool_failed", {
+        self.audit.record(
+            "tool_started",
+            {
                 "agent": self.agent_id,
                 "tool": tool_name,
-                "error_type": type(exc).__name__,
-            })
+            },
+        )
+
+        try:
+            if isinstance(tool, SandboxToolDefinition):
+                sandbox_executor = cast(SandboxIsolationBackend, self.executor)
+                result = sandbox_executor.execute(
+                    tool,
+                    safe_arguments,
+                    timeout_seconds=tool.timeout_seconds,
+                )
+            else:
+                standard_executor = cast(OSIsolationBackend, self.executor)
+                result = standard_executor.execute(
+                    tool,
+                    safe_arguments,
+                    timeout_seconds=tool.timeout_seconds,
+                )
+
+            if not isinstance(result, dict):
+                raise TypeError("Isolated tools must return a dictionary.")
+
+            copied_result = _json_copy(
+                result, maximum_bytes=MAX_TOOL_RESULT_BYTES
+            )
+            if not isinstance(copied_result, dict) or any(
+                not isinstance(key, str) for key in copied_result
+            ):
+                raise TypeError("Serialized tool results must be a string-keyed object.")
+            safe_result: dict[str, object] = copied_result
+        except Exception as exc:
+            self.audit.record(
+                "tool_failed",
+                {
+                    "agent": self.agent_id,
+                    "tool": tool_name,
+                    "error_type": type(exc).__name__,
+                },
+            )
             raise
 
-        self.audit.record("tool_completed", {
-            "agent": self.agent_id,
-            "tool": tool_name,
-        })
+        self.audit.record(
+            "tool_completed",
+            {
+                "agent": self.agent_id,
+                "tool": tool_name,
+            },
+        )
         return safe_result

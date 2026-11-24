@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Protocol
@@ -97,14 +97,16 @@ class SpecialistBenchmark:
         if not isinstance(case.prompt, str) or not case.prompt.strip():
             raise ValueError("Benchmark prompts must be non-empty strings.")
 
-        has_criterion = any((
-            case.expected_contains is not None,
-            case.expected_exact is not None,
-            case.expected_numeric is not None,
-            case.required_metadata is not None,
-            case.expected_confidence is not None,
-            case.expected_evidence_required is not None,
-        ))
+        has_criterion = any(
+            (
+                case.expected_contains is not None,
+                case.expected_exact is not None,
+                case.expected_numeric is not None,
+                case.required_metadata is not None,
+                case.expected_confidence is not None,
+                case.expected_evidence_required is not None,
+            )
+        )
         if not has_criterion:
             raise ValueError("Each benchmark case requires an evaluation criterion.")
 
@@ -125,7 +127,7 @@ class SpecialistBenchmark:
             or not isinstance(case.expected_numeric, (int, float))
             or not math.isfinite(case.expected_numeric)
         ):
-                raise ValueError("Expected numeric answers must be finite numbers.")
+            raise ValueError("Expected numeric answers must be finite numbers.")
 
         if case.required_metadata is not None and not isinstance(
             case.required_metadata, dict
@@ -138,7 +140,7 @@ class SpecialistBenchmark:
             or not math.isfinite(case.expected_confidence)
             or not 0.0 <= case.expected_confidence <= 1.0
         ):
-                raise ValueError("Expected confidence must be between zero and one.")
+            raise ValueError("Expected confidence must be between zero and one.")
 
         if case.expected_evidence_required is not None and not isinstance(
             case.expected_evidence_required, bool
@@ -225,17 +227,17 @@ class SpecialistBenchmark:
                 passed = not failures
                 reason = "All criteria passed." if passed else " ".join(failures)
 
-                case_results.append(BenchmarkCaseResult(
-                    index, passed, answer, reason
-                ))
+                case_results.append(BenchmarkCaseResult(index, passed, answer, reason))
 
             except Exception as exc:  # noqa: BLE001 - isolate benchmark case failures
-                case_results.append(BenchmarkCaseResult(
-                    index,
-                    False,
-                    "",
-                    f"Evaluation error: {type(exc).__name__}: {exc}",
-                ))
+                case_results.append(
+                    BenchmarkCaseResult(
+                        index,
+                        False,
+                        "",
+                        f"Evaluation error: {type(exc).__name__}: {exc}",
+                    )
+                )
 
         passed_count = sum(item.passed for item in case_results)
         accuracy = passed_count / len(cases)
@@ -255,15 +257,19 @@ class MathematicsSpecialist:
     name = "mathematics"
     domain = "mathematics"
 
-    _binary = MappingProxyType({
-        ast.Add: lambda a, b: a + b,
-        ast.Sub: lambda a, b: a - b,
-        ast.Mult: lambda a, b: a * b,
-        ast.Div: lambda a, b: a / b,
-        ast.FloorDiv: lambda a, b: a // b,
-        ast.Mod: lambda a, b: a % b,
-        ast.Pow: lambda a, b: a ** b,
-    })
+    _binary: Mapping[
+        type[ast.operator], Callable[[float, float], float]
+    ] = MappingProxyType(
+        {
+            ast.Add: lambda a, b: a + b,
+            ast.Sub: lambda a, b: a - b,
+            ast.Mult: lambda a, b: a * b,
+            ast.Div: lambda a, b: a / b,
+            ast.FloorDiv: lambda a, b: a // b,
+            ast.Mod: lambda a, b: a % b,
+            ast.Pow: lambda a, b: a**b,
+        }
+    )
 
     def evaluate_expression(self, expression: str) -> float:
         if not expression or len(expression) > 256:
@@ -276,7 +282,11 @@ class MathematicsSpecialist:
         def visit(node: ast.AST) -> float:
             if isinstance(node, ast.Expression):
                 return visit(node.body)
-            if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, (int, float))
+                and not isinstance(node.value, bool)
+            ):
                 value = float(node.value)
                 if not math.isfinite(value):
                     raise ValueError("Non-finite constants are not allowed.")
@@ -312,9 +322,7 @@ class MathematicsSpecialist:
         if equation.count("=") != 1:
             raise ValueError("Provide one equation in the form ax+b=c.")
 
-        left_text, right_text = (
-            part.strip() for part in equation.split("=", 1)
-        )
+        left_text, right_text = (part.strip() for part in equation.split("=", 1))
         if not left_text or not right_text:
             raise ValueError("Both sides of the equation are required.")
 
@@ -331,7 +339,11 @@ class MathematicsSpecialist:
                 if isinstance(node, ast.Expression):
                     return visit(node.body)
 
-                if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, (int, float))
+                    and not isinstance(node.value, bool)
+                ):
                     value = float(node.value)
                     if not math.isfinite(value) or abs(value) > 1e100:
                         raise ValueError("Numeric value exceeds safety limits.")
@@ -372,8 +384,10 @@ class MathematicsSpecialist:
                     else:
                         raise ValueError("Unsupported equation operator.")  # noqa: TRY004 - unsupported expression value
 
-                    if any(not math.isfinite(value) or abs(value) > 1e100
-                           for value in result):
+                    if any(
+                        not math.isfinite(value) or abs(value) > 1e100
+                        for value in result
+                    ):
                         raise ValueError("Equation exceeds numeric safety limits.")
                     return result
 
@@ -400,20 +414,23 @@ class MathematicsSpecialist:
         text = prompt.strip()
         for prefix in ("calculate ", "evaluate ", "solve "):
             if text.casefold().startswith(prefix):
-                text = text[len(prefix):].strip()
+                text = text[len(prefix) :].strip()
                 break
         if not text:
             raise ValueError("A mathematical problem is required.")
         if "=" in text:
             solution = self.solve_linear_equation(text)
             return SpecialistResult(
-                self.name, f"x = {solution['x']}", 0.95,
-                metadata={"method": "symbolic_equation_solver",
-                          "solution": solution},
+                self.name,
+                f"x = {solution['x']}",
+                0.95,
+                metadata={"method": "symbolic_equation_solver", "solution": solution},
             )
         value = self.evaluate_expression(text)
         return SpecialistResult(
-            self.name, str(value), 1.0,
+            self.name,
+            str(value),
+            1.0,
             metadata={"method": "safe_arithmetic_evaluator", "result": value},
         )
 
@@ -436,18 +453,23 @@ class ProgrammingSpecialist:
             )
 
         nodes = list(ast.walk(tree))
-        functions = sum(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                        for n in nodes)
+        functions = sum(
+            isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in nodes
+        )
         classes = sum(isinstance(n, ast.ClassDef) for n in nodes)
         imports = sum(isinstance(n, (ast.Import, ast.ImportFrom)) for n in nodes)
         calls = [
-            n.func.id if isinstance(n.func, ast.Name)
-            else n.func.attr if isinstance(n.func, ast.Attribute) else "<dynamic>"
-            for n in nodes if isinstance(n, ast.Call)
+            n.func.id
+            if isinstance(n.func, ast.Name)
+            else n.func.attr
+            if isinstance(n.func, ast.Attribute)
+            else "<dynamic>"
+            for n in nodes
+            if isinstance(n, ast.Call)
         ]
-        dangerous = sorted(set(calls) & {
-            "eval", "exec", "compile", "__import__", "input"
-        })
+        dangerous = sorted(
+            set(calls) & {"eval", "exec", "compile", "__import__", "input"}
+        )
         return SpecialistResult(
             self.name,
             "Python syntax is valid; static inspection completed without execution.",
@@ -475,8 +497,10 @@ class ScienceSpecialist:
             raise ValueError("A scientific question is required.")
         lower = text.casefold()
         question_type = (
-            "causal" if any(word in lower for word in ("cause", "causes", "effect"))
-            else "hypothesis" if any(word in lower for word in ("hypothesis", "theory"))
+            "causal"
+            if any(word in lower for word in ("cause", "causes", "effect"))
+            else "hypothesis"
+            if any(word in lower for word in ("hypothesis", "theory"))
             else "explanatory"
         )
         requirements = [
@@ -515,15 +539,37 @@ class SpecialistRouter:
     def route(self, prompt: str) -> tuple[Specialist, ...]:
         text = prompt.casefold()
         keywords = {
-            "mathematics": ("calculate", "equation", "math", "solve", "integral",
-                            "differentiate", "evaluate"),
-            "programming": ("code", "python", "program", "debug", "function",
-                            "syntax", "algorithm"),
-            "science": ("science", "physics", "biology", "chemistry",
-                        "hypothesis", "experiment", "scientific"),
+            "mathematics": (
+                "calculate",
+                "equation",
+                "math",
+                "solve",
+                "integral",
+                "differentiate",
+                "evaluate",
+            ),
+            "programming": (
+                "code",
+                "python",
+                "program",
+                "debug",
+                "function",
+                "syntax",
+                "algorithm",
+            ),
+            "science": (
+                "science",
+                "physics",
+                "biology",
+                "chemistry",
+                "hypothesis",
+                "experiment",
+                "scientific",
+            ),
         }
         selected = [
-            specialist for domain, specialist in self._specialists.items()
+            specialist
+            for domain, specialist in self._specialists.items()
             if any(word in text for word in keywords.get(domain, ()))
         ]
         return tuple(selected or self._specialists.values())
@@ -534,11 +580,13 @@ class SpecialistRouter:
             try:
                 results.append(specialist.analyze(prompt))
             except (ValueError, RuntimeError, ArithmeticError) as exc:
-                results.append(SpecialistResult(
-                    specialist.name,
-                    f"Unable to complete this analysis: {exc}",
-                    0.0,
-                    evidence_required=True,
-                    metadata={"error": type(exc).__name__},
-                ))
+                results.append(
+                    SpecialistResult(
+                        specialist.name,
+                        f"Unable to complete this analysis: {exc}",
+                        0.0,
+                        evidence_required=True,
+                        metadata={"error": type(exc).__name__},
+                    )
+                )
         return tuple(results)
