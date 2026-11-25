@@ -1,0 +1,39 @@
+{
+  "dataset": "databricks/databricks-dolly-15k",
+  "revision": "bdd27f4d94b9c1f951818a7da7fd7aeea5dbff1a",
+  "source_uri": "https://huggingface.co/datasets/databricks/databricks-dolly-15k",
+  "license": "CC-BY-SA-3.0",
+  "attribution": "Databricks, Inc. and the Dolly dataset contributors. See the official dataset card and the CC BY-SA 3.0 license.",
+  "source_rows": 15011,
+  "privacy_excluded_rows": 16,
+  "privacy_issue_totals": {
+    "email_address": 7,
+    "phone_number": 11,
+    "possible_secret": 1
+  },
+  "duplicates_removed_by_aviy": 16,
+  "prepared_records": 14979,
+  "split_counts": {
+    "train": 13450,
+    "validation": 736,
+    "test": 793
+  },
+  "governance_audit": {
+    "accepted": 14979,
+    "rejected": 0,
+    "duplicates_removed": 16,
+    "split_counts": {
+      "train": 13450,
+      "validation": 736,
+      "test": 793
+    },
+    "provenance_complete": true,
+    "licenses_approved": true,
+    "privacy_scan_passed": true,
+    "split_integrity_passed": true,
+    "seed": 42
+  },
+  "governance_passed": true,
+  "seed": 42,
+  "training_started": false
+}

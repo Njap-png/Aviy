@@ -1,4 +1,4 @@
-﻿# Aviy Project Checklist
+# Aviy Project Checklist
 
 All tasks begin unchecked. A task is completed only after implementation,
 verification and explicit authorization to change its checkbox.
@@ -102,7 +102,7 @@ verification and explicit authorization to change its checkbox.
 **Acceptance criteria:** Deterministic decoding tests and inference benchmarks pass.
 
 ## Phase 15 — Instruction tuning and alignment
-- [ ] Prepare approved instruction datasets
+- [x] Prepare approved instruction datasets
 - [ ] Implement supervised fine-tuning
 - [ ] Evaluate preferences, safety and regressions
 

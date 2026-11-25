@@ -1,0 +1,16 @@
+{"category": "information_extraction", "issues": ["phone_number"], "source_row": 902}
+{"category": "open_qa", "issues": ["email_address"], "source_row": 904}
+{"category": "classification", "issues": ["email_address"], "source_row": 1981}
+{"category": "brainstorming", "issues": ["phone_number"], "source_row": 4021}
+{"category": "brainstorming", "issues": ["phone_number"], "source_row": 4773}
+{"category": "information_extraction", "issues": ["phone_number"], "source_row": 5852}
+{"category": "classification", "issues": ["email_address"], "source_row": 6084}
+{"category": "classification", "issues": ["email_address"], "source_row": 6270}
+{"category": "brainstorming", "issues": ["phone_number"], "source_row": 6904}
+{"category": "creative_writing", "issues": ["phone_number"], "source_row": 7354}
+{"category": "open_qa", "issues": ["email_address"], "source_row": 8634}
+{"category": "information_extraction", "issues": ["phone_number"], "source_row": 8850}
+{"category": "creative_writing", "issues": ["email_address", "phone_number", "possible_secret"], "source_row": 9362}
+{"category": "information_extraction", "issues": ["phone_number"], "source_row": 10018}
+{"category": "creative_writing", "issues": ["email_address", "phone_number"], "source_row": 10265}
+{"category": "brainstorming", "issues": ["phone_number"], "source_row": 13505}
