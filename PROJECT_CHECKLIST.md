@@ -88,9 +88,9 @@ verification and explicit authorization to change its checkbox.
 **Acceptance criteria:** Retrieval, access control, versioning and recovery tests pass.
 
 ## Phase 13 — Reasoning and cognitive architecture
-- [ ] Implement reasoning interfaces
-- [ ] Implement planning and verification
-- [ ] Evaluate reasoning reliability and failure detection
+- [x] Implement reasoning interfaces
+- [x] Implement planning and verification
+- [x] Evaluate reasoning reliability and failure detection
 
 **Acceptance criteria:** Benchmark reports measure correctness and uncertainty handling.
 
@@ -212,4 +212,3 @@ verification and explicit authorization to change its checkbox.
 - [ ] Update roadmap using validated findings
 
 **Acceptance criteria:** Research reports, reproducible results and approved future roadmap exist.
-
