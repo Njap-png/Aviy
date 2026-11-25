@@ -296,3 +296,127 @@ def test_instruction_dataset_rejects_unapproved_source() -> None:
     assert dataset.audit.passed is False
     with pytest.raises(ValueError, match="audit"):
         train_supervised_finetuning(make_model(), ByteBPETokenizer(), dataset)
+
+def test_instruction_sft_reports_response_only_and_validation_losses() -> None:
+    dataset = make_instruction_dataset()
+    tokenizer = ByteBPETokenizer.train(
+        [f"Question {i} Answer {i}" for i in range(30)],
+        vocabulary_size=256,
+    )
+    model = make_model()
+
+    report = train_supervised_finetuning(
+        model,
+        tokenizer,
+        dataset,
+        epochs=2,
+        maximum_length=32,
+        batch_size=4,
+        seed=42,
+    )
+
+    assert report["response_only_loss"] is True
+    assert report["completed_epochs"] == 2
+    assert report["optimization_steps"] > 0
+    assert len(report["validation_losses"]) == 2
+    assert all(torch.isfinite(torch.tensor(value)) for value in report["validation_losses"])
+    assert report["response_tokens_seen"] > 0
+
+
+def test_instruction_sft_checkpoint_resumes_at_next_epoch(tmp_path) -> None:
+    dataset = make_instruction_dataset()
+    tokenizer = ByteBPETokenizer.train(
+        [f"Question {i} Answer {i}" for i in range(30)],
+        vocabulary_size=256,
+    )
+    checkpoint = tmp_path / "instruction_sft.pt"
+
+    first_model = make_model()
+    first = train_supervised_finetuning(
+        first_model,
+        tokenizer,
+        dataset,
+        epochs=1,
+        maximum_length=32,
+        batch_size=4,
+        seed=42,
+        checkpoint_path=checkpoint,
+    )
+
+    assert first["completed_epochs"] == 1
+    assert checkpoint.is_file()
+    assert checkpoint.with_suffix(".pt.sha256").is_file()
+
+    resumed_model = make_model()
+    resumed = train_supervised_finetuning(
+        resumed_model,
+        tokenizer,
+        dataset,
+        epochs=2,
+        maximum_length=32,
+        batch_size=4,
+        seed=42,
+        checkpoint_path=checkpoint,
+        resume_from_checkpoint=checkpoint,
+    )
+
+    assert resumed["resumed_from_epoch"] == 1
+    assert resumed["completed_epochs"] == 2
+    assert resumed["optimization_steps"] > 0
+    assert resumed["global_step"] > first["global_step"]
+    assert resumed["response_tokens_seen"] > first["response_tokens_seen"]
+
+
+def test_instruction_sft_rejects_incompatible_resume_settings(tmp_path) -> None:
+    dataset = make_instruction_dataset()
+    tokenizer = ByteBPETokenizer.train(
+        [f"Question {i} Answer {i}" for i in range(30)],
+        vocabulary_size=256,
+    )
+    checkpoint = tmp_path / "instruction_sft.pt"
+
+    train_supervised_finetuning(
+        make_model(),
+        tokenizer,
+        dataset,
+        epochs=1,
+        maximum_length=32,
+        batch_size=4,
+        seed=42,
+        checkpoint_path=checkpoint,
+    )
+
+    with pytest.raises(ValueError, match="incompatible"):
+        train_supervised_finetuning(
+            make_model(),
+            tokenizer,
+            dataset,
+            epochs=2,
+            maximum_length=32,
+            batch_size=8,
+            seed=42,
+            checkpoint_path=checkpoint,
+            resume_from_checkpoint=checkpoint,
+        )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"epochs": 0},
+        {"batch_size": 0},
+        {"maximum_length": 1},
+        {"seed": -1},
+        {"learning_rate": float("nan")},
+    ],
+)
+def test_instruction_sft_rejects_invalid_training_settings(kwargs) -> None:
+    dataset = make_instruction_dataset()
+    tokenizer = ByteBPETokenizer()
+    with pytest.raises(ValueError):
+        train_supervised_finetuning(
+            make_model(),
+            tokenizer,
+            dataset,
+            **kwargs,
+        )

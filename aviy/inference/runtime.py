@@ -226,7 +226,7 @@ class InferenceEngine:
         )
         generated = generate_tokens(self.model, input_ids, config)
         new_ids = generated[0, len(prompt_ids) :].tolist()
-        return self.tokenizer.decode(new_ids)
+        return self.tokenizer.decode_generated(new_ids)
 
     def inspect(self) -> dict[str, Any]:
         """Return non-sensitive runtime metadata; no weights or prompt content."""

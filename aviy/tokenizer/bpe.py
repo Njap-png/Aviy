@@ -191,6 +191,27 @@ class ByteBPETokenizer:
         except UnicodeDecodeError as exc:
             raise ValueError("Token IDs do not decode to valid UTF-8 text") from exc
 
+    def decode_generated(self, token_ids: Iterable[int]) -> str:
+        """Decode model output, replacing incomplete or invalid UTF-8 sequences."""
+        pieces: dict[int, bytes] = {index: bytes([index]) for index in range(256)}
+        for index, (left, right) in enumerate(self.merges):
+            pieces[256 + index] = pieces[left] + pieces[right]
+
+        try:
+            iterator = iter(token_ids)
+        except TypeError as exc:
+            raise TypeError("Token IDs must be an iterable of integers") from exc
+
+        output = []
+        for token in iterator:
+            if isinstance(token, bool) or not isinstance(token, int):
+                raise TypeError("Token IDs must be integers, not booleans or other types")
+            if token not in pieces:
+                raise ValueError(f"Unknown tokenizer token ID: {token}")
+            output.append(pieces[token])
+
+        return b"".join(output).decode("utf-8", errors="replace")
+
     def measure(self, texts: Iterable[str]) -> TokenizerMetrics:
         words = 0
         tokens = 0

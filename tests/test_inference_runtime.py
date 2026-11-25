@@ -11,6 +11,15 @@ from aviy.models.base_model import AviyBaseLM, BaseModelConfig
 from aviy.tokenizer.bpe import ByteBPETokenizer
 
 
+def test_runtime_replaces_invalid_utf8_in_generated_output():
+    tokenizer = ByteBPETokenizer()
+    assert tokenizer.decode_generated([255]) == "\ufffd"
+    assert tokenizer.decode_generated([65, 255, 66]) == "A\ufffdB"
+
+    with pytest.raises(ValueError, match="valid UTF-8"):
+        tokenizer.decode([255])
+
+
 def make_model() -> AviyBaseLM:
     return AviyBaseLM(
         BaseModelConfig(
