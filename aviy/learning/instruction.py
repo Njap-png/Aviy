@@ -7,7 +7,7 @@ import json
 import math
 import random
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import torch
@@ -36,14 +36,24 @@ class InstructionRecord:
     approved_for_training: bool
     source_uri: str
     record_id: str
+    dataset_revision: str = ""
+    license_uri: str = ""
+    language: str = ""
+    language_script: str = ""
+    retrieved_at: str = ""
+    training_stage: str = ""
+    content_category: str = ""
+    processing_history: tuple[str, ...] = ()
+    privacy_screening: str = ""
+    duplicate_screening: str = ""
 
 
 @dataclass(frozen=True)
 class PreparedInstructionDataset:
-    records: tuple[InstructionRecord, ...]
+    records: tuple[SplitInstructionRecord, ...]
     audit: DatasetAudit
 
-    def split(self, name: str) -> tuple[InstructionRecord, ...]:
+    def split(self, name: str) -> tuple[SplitInstructionRecord, ...]:
         if name not in ("train", "validation", "test"):
             raise ValueError("Unknown dataset split")
         return tuple(
@@ -60,6 +70,16 @@ class SplitInstructionRecord:
     source_uri: str
     record_id: str
     split: str
+    dataset_revision: str = ""
+    license_uri: str = ""
+    language: str = ""
+    language_script: str = ""
+    retrieved_at: str = ""
+    training_stage: str = ""
+    content_category: str = ""
+    processing_history: tuple[str, ...] = ()
+    privacy_screening: str = ""
+    duplicate_screening: str = ""
 
 
 def prepare_instruction_dataset(
@@ -77,6 +97,16 @@ def prepare_instruction_dataset(
             approved_for_training=item.approved_for_training,
             source_uri=item.source_uri,
             record_id=item.record_id,
+            dataset_revision=item.dataset_revision,
+            license_uri=item.license_uri,
+            language=item.language,
+            language_script=item.language_script,
+            retrieved_at=item.retrieved_at,
+            training_stage=item.training_stage,
+            content_category=item.content_category,
+            processing_history=item.processing_history,
+            privacy_screening=item.privacy_screening,
+            duplicate_screening=item.duplicate_screening,
         )
         for item in records
     ]
@@ -98,6 +128,16 @@ def prepare_instruction_dataset(
                 source_uri=original.source_uri,
                 record_id=original.record_id,
                 split=item.split,
+                dataset_revision=item.dataset_revision,
+                license_uri=item.license_uri,
+                language=item.language,
+                language_script=item.language_script,
+                retrieved_at=item.retrieved_at,
+                training_stage=item.training_stage,
+                content_category=item.content_category,
+                processing_history=item.processing_history,
+                privacy_screening=item.privacy_screening,
+                duplicate_screening=item.duplicate_screening,
             )
         )
     return PreparedInstructionDataset(
@@ -106,7 +146,7 @@ def prepare_instruction_dataset(
 
 
 def _encode_instruction_record(
-    record: InstructionRecord,
+    record: InstructionRecord | SplitInstructionRecord,
     tokenizer: ByteBPETokenizer,
     maximum_length: int,
 ) -> tuple[list[int], int]:
@@ -206,18 +246,8 @@ def _fingerprint(value: object) -> str:
 
 
 def _dataset_fingerprint(dataset: PreparedInstructionDataset) -> str:
-    records = [
-        {
-            "prompt": record.prompt,
-            "response": record.response,
-            "source_id": record.source_id,
-            "license": record.license,
-            "source_uri": record.source_uri,
-            "record_id": record.record_id,
-            "split": getattr(record, "split", ""),
-        }
-        for record in dataset.records
-    ]
+    # Include every record field so provenance changes invalidate old checkpoints.
+    records = [asdict(record) for record in dataset.records]
     return _fingerprint(records)
 
 
@@ -360,6 +390,8 @@ def train_supervised_finetuning(
         "model_config_fingerprint": config_hash,
     }
 
+    batches_per_epoch = math.ceil(len(train_examples) / batch_size)
+
     start_epoch = 0
     global_step = 0
     response_tokens_seen = 0
@@ -386,14 +418,24 @@ def train_supervised_finetuning(
             or completed >= epochs
         ):
             raise ValueError("Checkpoint completed epoch count is incompatible with target epochs")
+
+        saved_step = inspected.get("step")
+        expected_step = completed * batches_per_epoch
+        if (
+            isinstance(saved_step, bool)
+            or not isinstance(saved_step, int)
+            or saved_step != expected_step
+        ):
+            raise ValueError("Checkpoint optimization step count is inconsistent with completed epochs")
+
         if inspected.get("seed") != seed:
             raise ValueError("Checkpoint seed does not match requested seed")
 
-        saved_response_tokens = metadata["sft"].get("response_tokens_seen", 0)
+        saved_response_tokens = metadata["sft"].get("response_tokens_seen")
         if (
             isinstance(saved_response_tokens, bool)
             or not isinstance(saved_response_tokens, int)
-            or saved_response_tokens < 0
+            or saved_response_tokens <= 0
         ):
             raise ValueError("Checkpoint response-token count is invalid")
         response_tokens_seen = saved_response_tokens

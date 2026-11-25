@@ -24,6 +24,7 @@ from aviy.inference.generation import (
     generate_tokens,
 )
 from aviy.knowledge.retrieval import InMemoryGraph, InMemoryVectorIndex
+from aviy.learning import instruction as instruction_module
 from aviy.learning.instruction import (
     InstructionRecord,
     evaluate_alignment,
@@ -33,6 +34,7 @@ from aviy.learning.instruction import (
 from aviy.memory.store import MemoryStore
 from aviy.models.base_model import AviyBaseLM, BaseModelConfig
 from aviy.tokenizer.bpe import ByteBPETokenizer
+from aviy.training import checkpoints as checkpoint_module
 
 
 def make_suite() -> BenchmarkSuite:
@@ -365,6 +367,77 @@ def test_instruction_sft_checkpoint_resumes_at_next_epoch(tmp_path) -> None:
     assert resumed["optimization_steps"] > 0
     assert resumed["global_step"] > first["global_step"]
     assert resumed["response_tokens_seen"] > first["response_tokens_seen"]
+
+
+@pytest.mark.parametrize(
+    "corruption, expected_error",
+    [
+        ("step", "optimization step count"),
+        ("missing_response_tokens", "response-token count"),
+        ("zero_response_tokens", "response-token count"),
+        ("boolean_response_tokens", "response-token count"),
+    ],
+)
+def test_instruction_sft_rejects_corrupt_resume_metadata_before_restore(
+    tmp_path, monkeypatch, corruption: str, expected_error: str
+) -> None:
+    dataset = make_instruction_dataset()
+    tokenizer = ByteBPETokenizer.train(
+        [f"Question {i} Answer {i}" for i in range(30)],
+        vocabulary_size=256,
+    )
+    checkpoint = tmp_path / "instruction_sft_corrupt.pt"
+
+    train_supervised_finetuning(
+        make_model(),
+        tokenizer,
+        dataset,
+        epochs=1,
+        maximum_length=32,
+        batch_size=4,
+        seed=42,
+        checkpoint_path=checkpoint,
+    )
+
+    payload = checkpoint_module.load_verified_checkpoint(
+        checkpoint, map_location="cpu"
+    )
+    sft_metadata = payload["metadata"]["sft"]
+
+    if corruption == "step":
+        payload["step"] += 1
+    elif corruption == "missing_response_tokens":
+        sft_metadata.pop("response_tokens_seen")
+    elif corruption == "zero_response_tokens":
+        sft_metadata["response_tokens_seen"] = 0
+    elif corruption == "boolean_response_tokens":
+        sft_metadata["response_tokens_seen"] = True
+
+    monkeypatch.setattr(
+        checkpoint_module,
+        "load_verified_checkpoint",
+        lambda *args, **kwargs: payload,
+    )
+
+    def fail_if_restored(*args: object, **kwargs: object) -> None:
+        pytest.fail("Invalid checkpoint reached model/optimizer restoration")
+
+    monkeypatch.setattr(
+        instruction_module, "load_checkpoint", fail_if_restored
+    )
+
+    with pytest.raises(ValueError, match=expected_error):
+        train_supervised_finetuning(
+            make_model(),
+            tokenizer,
+            dataset,
+            epochs=2,
+            maximum_length=32,
+            batch_size=4,
+            seed=42,
+            checkpoint_path=checkpoint,
+            resume_from_checkpoint=checkpoint,
+        )
 
 
 def test_instruction_sft_rejects_incompatible_resume_settings(tmp_path) -> None:
