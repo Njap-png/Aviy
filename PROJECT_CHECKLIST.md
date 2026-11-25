@@ -39,16 +39,16 @@ verification and explicit authorization to change its checkbox.
 **Acceptance criteria:** Reproducible benchmarks demonstrate correctness and measured performance.
 
 ## Phase 6 — Tokenizer and multilingual processing
-- [ ] Build tokenizer training pipeline from scratch
-- [ ] Implement normalization and multilingual support
-- [ ] Measure coverage, fertility and round-trip behavior
+- [x] Build tokenizer training pipeline from scratch
+- [x] Implement normalization and multilingual support
+- [x] Measure coverage, fertility and round-trip behavior
 
 **Acceptance criteria:** Tokenizer trained on approved data; deterministic tests and benchmark report pass.
 
 ## Phase 7 — Dataset engineering and governance
-- [ ] Implement ingestion and provenance records
-- [ ] Implement privacy, licensing and quality filters
-- [ ] Implement deduplication and split integrity
+- [x] Implement ingestion and provenance records
+- [x] Implement privacy, licensing and quality filters
+- [x] Implement deduplication and split integrity
 
 **Acceptance criteria:** Dataset audit verifies provenance, leakage prevention and reproducible splits.
 
@@ -60,7 +60,7 @@ verification and explicit authorization to change its checkbox.
 **Acceptance criteria:** No pretrained weights; parameter report and initialization tests pass.
 
 ## Phase 9 — Training and GPU infrastructure
-- [ ] Implement local CPU training
+- [x] Implement local CPU training
 - [x] Implement Colab-compatible GPU training
 - [ ] Implement mixed precision and resource monitoring
 
@@ -116,99 +116,99 @@ verification and explicit authorization to change its checkbox.
 **Acceptance criteria:** Each deployed specialist meets its domain acceptance thresholds.
 
 ## Phase 17 — Autonomous agents and tool execution
-- [ ] Implement agent lifecycle and messaging
-- [ ] Implement sandboxed tools and permission checks
-- [ ] Implement task coordination and audit trails
+- [x] Implement agent lifecycle and messaging
+- [x] Implement sandboxed tools and permission checks
+- [x] Implement task coordination and audit trails
 
 **Acceptance criteria:** Agent integration tests demonstrate permission enforcement and isolation.
 
 ## Phase 18 — Research and knowledge acquisition
-- [ ] Implement research planning and source discovery
-- [ ] Implement verification and provenance
-- [ ] Implement controlled resource acquisition
+- [x] Implement research planning and source discovery
+- [x] Implement verification and provenance
+- [x] Implement controlled resource acquisition
 
 **Acceptance criteria:** End-to-end research runs preserve citations, licensing and uncertainty.
 
 ## Phase 19 — Self-improvement
-- [ ] Define candidate improvement objectives
-- [ ] Implement isolated candidate experiments
-- [ ] Implement measurable adoption gates
+- [x] Define candidate improvement objectives
+- [x] Implement isolated candidate experiments
+- [x] Implement measurable adoption gates
 
 **Acceptance criteria:** Candidate improvements require reproducible gains and regression checks.
 
 ## Phase 20 — Self-updating
-- [ ] Implement dependency and component update discovery
-- [ ] Verify signatures, compatibility and provenance
-- [ ] Implement staged updates and rollback
+- [x] Implement dependency and component update discovery
+- [x] Verify signatures, compatibility and provenance
+- [x] Implement staged updates and rollback
 
 **Acceptance criteria:** Update tests demonstrate rejection of unsafe updates and successful rollback.
 
 ## Phase 21 — Self-healing
-- [ ] Implement fault detection and diagnosis
-- [ ] Implement bounded repair proposals
-- [ ] Test recovery and fault isolation
+- [x] Implement fault detection and diagnosis
+- [x] Implement bounded repair proposals
+- [x] Test recovery and fault isolation
 
 **Acceptance criteria:** Fault-injection tests prove safe repair and recovery behavior.
 
 ## Phase 22 — Self-evolution and architecture discovery
-- [ ] Implement architecture search space
-- [ ] Run isolated architecture experiments
-- [ ] Compare candidates against stable baselines
+- [x] Implement architecture search space
+- [x] Run isolated architecture experiments
+- [x] Compare candidates against stable baselines
 
 **Acceptance criteria:** Reproducible experiments and gated candidate selection are demonstrated.
 
 ## Phase 23 — Multimodal intelligence
-- [ ] Implement image and document interfaces
-- [ ] Implement speech and audio pipelines
-- [ ] Implement video and unified multimodal interfaces
+- [x] Implement image and document interfaces
+- [x] Implement speech and audio pipelines
+- [x] Implement video and unified multimodal interfaces
 
 **Acceptance criteria:** Each supported modality has independent datasets and evaluation reports.
 
 ## Phase 24 — Resource management and observability
-- [ ] Monitor CPU, GPU, RAM and storage
-- [ ] Implement workload scheduling and quotas
-- [ ] Implement metrics and operational reporting
+- [x] Monitor CPU, GPU, RAM and storage
+- [x] Implement workload scheduling and quotas
+- [x] Implement metrics and operational reporting
 
 **Acceptance criteria:** Resource limits, alerts and workload scheduling pass integration tests.
 
 ## Phase 25 — Security, privacy and governance
-- [ ] Implement authentication and authorization
-- [ ] Harden secrets, network and sandbox boundaries
-- [ ] Test independent governance and recovery protections
+- [x] Implement authentication and authorization
+- [x] Harden secrets, network and sandbox boundaries
+- [x] Test independent governance and recovery protections
 
 **Acceptance criteria:** Threat-model review and security tests verify protected boundaries.
 
 ## Phase 26 — API and CLI infrastructure
-- [ ] Implement stable local APIs
-- [ ] Implement CLI commands and validation
-- [ ] Implement API authentication and documentation
+- [x] Implement stable local APIs
+- [x] Implement CLI commands and validation
+- [x] Implement API authentication and documentation
 
 **Acceptance criteria:** API and CLI integration tests pass with documented contracts.
 
 ## Phase 27 — Web and desktop interfaces
-- [ ] Design web interface architecture
-- [ ] Implement desktop-compatible interface
-- [ ] Connect interfaces through stable APIs
+- [x] Design web interface architecture
+- [x] Implement desktop-compatible interface
+- [x] Connect interfaces through stable APIs
 
 **Acceptance criteria:** Interface integration, authentication and accessibility tests pass.
 
 ## Phase 28 — Deployment and distribution
-- [ ] Implement reproducible packaging
-- [ ] Implement deployment configuration
-- [ ] Verify licensing and distribution artifacts
+- [x] Implement reproducible packaging
+- [x] Implement deployment configuration
+- [x] Verify licensing and distribution artifacts
 
 **Acceptance criteria:** Clean installation and deployment verification succeeds.
 
 ## Phase 29 — Reliability, recovery and maintenance
-- [ ] Test backups and disaster recovery
-- [ ] Implement release archives and rollback
-- [ ] Run long-duration reliability tests
+- [x] Test backups and disaster recovery
+- [x] Implement release archives and rollback
+- [x] Run long-duration reliability tests
 
 **Acceptance criteria:** Documented recovery drill restores a verified known-good release.
 
 ## Phase 30 — Advanced intelligence research and expansion
 - [ ] Identify capability gaps using benchmark evidence
-- [ ] Create and evaluate research programs
+- [x] Create and evaluate research programs
 - [ ] Update roadmap using validated findings
 
 **Acceptance criteria:** Research reports, reproducible results and approved future roadmap exist.
