@@ -74,9 +74,9 @@ verification and explicit authorization to change its checkbox.
 **Acceptance criteria:** Interrupted training resumes correctly; corrupted checkpoints are rejected.
 
 ## Phase 11 — Evaluation and benchmarking
-- [ ] Build capability-specific benchmark framework
-- [ ] Measure accuracy, reliability and efficiency
-- [ ] Implement regression and contamination checks
+- [x] Build capability-specific benchmark framework
+- [x] Measure accuracy, reliability and efficiency
+- [x] Implement regression and contamination checks
 
 **Acceptance criteria:** Baseline reports are reproducible and cover all initial evaluation dimensions.
 
