@@ -1,0 +1,45 @@
+{
+  "format": "aviy-tokenizer-benchmark-v1",
+  "tokenizer": "byte-level-bpe",
+  "vocabulary_size": 413,
+  "normalization": "Unicode NFC and whitespace normalization",
+  "coverage_definition": "Measured by comparing normalized input with decoded encoded output.",
+  "metrics": {
+    "samples": 60,
+    "words": 840,
+    "tokens": 66,
+    "characters": 6710,
+    "fertility_tokens_per_word": 0.07857142857142857,
+    "characters_per_token": 101.66666666666667,
+    "character_coverage_rate": 1.0,
+    "byte_coverage_rate": 1.0,
+    "unknown_characters": 0,
+    "round_trip_rate": 1.0
+  },
+  "limitations": [
+    "Byte-level encoding represents valid Unicode input without an unknown token.",
+    "Round-trip measurements detect implementation or serialization errors.",
+    "Fertility depends on the evaluated corpus.",
+    "A synthetic benchmark is not evidence of real-corpus quality.",
+    "All records are synthetic test fixtures, not an externally verified approved corpus.",
+    "This report verifies tokenizer implementation behavior, not real-world corpus quality."
+  ],
+  "evidence_class": "synthetic_engineering_fixture",
+  "model_capability_claim": false,
+  "dataset_audit": {
+    "accepted": 60,
+    "rejected": 0,
+    "duplicates_removed": 0,
+    "split_counts": {
+      "train": 54,
+      "validation": 4,
+      "test": 2
+    },
+    "provenance_complete": true,
+    "licenses_approved": true,
+    "privacy_scan_passed": true,
+    "split_integrity_passed": true,
+    "seed": 42,
+    "passed": true
+  }
+}

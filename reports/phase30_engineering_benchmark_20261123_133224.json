@@ -1,0 +1,53 @@
+{
+  "benchmark": "Aviy API health endpoint engineering baseline",
+  "scope": "Infrastructure only; not an AI capability score",
+  "created_utc": "2026-11-23T10:32:50.145840+00:00",
+  "archive_sha256": "53b0f4c24d255259323a90b18b5577f3c1c18abbd1a3542e402ef00b821d26fa",
+  "rounds": 5,
+  "requests_per_round": 250,
+  "total_requests": 1250,
+  "results": [
+    {
+      "round": 1,
+      "requests": 250,
+      "mean_ms": 2.194595198496245,
+      "median_ms": 1.9072499999310821,
+      "p95_ms": 2.8901000041514635
+    },
+    {
+      "round": 2,
+      "requests": 250,
+      "mean_ms": 2.560968400212005,
+      "median_ms": 2.0996499952161685,
+      "p95_ms": 4.670800000894815
+    },
+    {
+      "round": 3,
+      "requests": 250,
+      "mean_ms": 2.7881852007703856,
+      "median_ms": 2.216649998445064,
+      "p95_ms": 4.997199983336031
+    },
+    {
+      "round": 4,
+      "requests": 250,
+      "mean_ms": 2.098483599955216,
+      "median_ms": 2.0084999996470287,
+      "p95_ms": 2.7914000093005598
+    },
+    {
+      "round": 5,
+      "requests": 250,
+      "mean_ms": 2.085550000076182,
+      "median_ms": 1.9406999927014112,
+      "p95_ms": 2.9155999945942312
+    }
+  ],
+  "median_round_mean_ms": 2.194595198496245,
+  "median_round_p95_ms": 2.9155999945942312,
+  "limitations": [
+    "FastAPI TestClient measures in-process latency.",
+    "This is not production network performance.",
+    "This does not evaluate language, reasoning, mathematics, coding or research quality."
+  ]
+}

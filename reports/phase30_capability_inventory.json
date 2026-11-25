@@ -1,0 +1,276 @@
+{
+  "checkpoint_file_count": 0,
+  "checkpoint_files": [],
+  "created_utc": "2026-11-23T11:41:23.578426+00:00",
+  "python_source_file_count": 72,
+  "source_files_with_model_or_inference_indicators": [
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\agents\\runtime.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\agents\\windows_sandbox.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\autonomous\\architecture_evolution.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\autonomous\\self_healing.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\autonomous\\self_improvement.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\cognition\\reasoning.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\core\\container.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\core\\coordinator.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\core\\errors.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\core\\interfaces.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\core\\registry.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\data\\pipeline.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\evaluation\\benchmarks.py"
+    },
+    {
+      "indicators": [
+        "class ",
+        "def generate",
+        "model",
+        "inference"
+      ],
+      "path": "aviy\\inference\\generation.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\infrastructure\\resources.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\infrastructure\\updates.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\knowledge\\research.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\knowledge\\retrieval.py"
+    },
+    {
+      "indicators": [
+        "class ",
+        "tokenizer",
+        "model"
+      ],
+      "path": "aviy\\learning\\instruction.py"
+    },
+    {
+      "indicators": [
+        "model"
+      ],
+      "path": "aviy\\math\\numerical.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\memory\\store.py"
+    },
+    {
+      "indicators": [
+        "model"
+      ],
+      "path": "aviy\\models\\__init__.py"
+    },
+    {
+      "indicators": [
+        "model"
+      ],
+      "path": "aviy\\models\\architectures\\__init__.py"
+    },
+    {
+      "indicators": [
+        "class ",
+        "model"
+      ],
+      "path": "aviy\\models\\architectures\\base.py"
+    },
+    {
+      "indicators": [
+        "class ",
+        "model"
+      ],
+      "path": "aviy\\models\\architectures\\families.py"
+    },
+    {
+      "indicators": [
+        "model"
+      ],
+      "path": "aviy\\models\\architectures\\registry.py"
+    },
+    {
+      "indicators": [
+        "class ",
+        "tokenizer",
+        "model"
+      ],
+      "path": "aviy\\models\\base_model.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\models\\specialists.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\multimodal\\pipelines.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\security\\authentication.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\security\\durable_governance.py"
+    },
+    {
+      "indicators": [
+        "class "
+      ],
+      "path": "aviy\\security\\governance.py"
+    },
+    {
+      "indicators": [
+        "tokenizer"
+      ],
+      "path": "aviy\\tokenizer\\__init__.py"
+    },
+    {
+      "indicators": [
+        "class ",
+        "tokenizer"
+      ],
+      "path": "aviy\\tokenizer\\benchmark.py"
+    },
+    {
+      "indicators": [
+        "class ",
+        "tokenizer"
+      ],
+      "path": "aviy\\tokenizer\\bpe.py"
+    },
+    {
+      "indicators": [
+        "checkpoint",
+        "model"
+      ],
+      "path": "aviy\\training\\__init__.py"
+    },
+    {
+      "indicators": [
+        "model"
+      ],
+      "path": "aviy\\training\\benchmark.py"
+    },
+    {
+      "indicators": [
+        "checkpoint",
+        "model"
+      ],
+      "path": "aviy\\training\\checkpoints.py"
+    },
+    {
+      "indicators": [
+        "checkpoint",
+        "model"
+      ],
+      "path": "aviy\\training\\engine.py"
+    },
+    {
+      "indicators": [
+        "class ",
+        "checkpoint"
+      ],
+      "path": "aviy\\training\\experiments.py"
+    },
+    {
+      "indicators": [
+        "model"
+      ],
+      "path": "aviy\\training\\losses.py"
+    },
+    {
+      "indicators": [
+        "class ",
+        "model"
+      ],
+      "path": "aviy\\training\\optimizers.py"
+    }
+  ]
+}

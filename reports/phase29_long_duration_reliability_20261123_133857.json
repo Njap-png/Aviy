@@ -1,0 +1,20 @@
+{
+  "phase": 29,
+  "test": "30-minute live API reliability soak",
+  "timestamp": "20261123_133857",
+  "endpoint": "http://127.0.0.1:55067/health",
+  "authentication": "temporary signing key and isolated SQLite database",
+  "metrics": {
+    "duration_seconds": 1800.0,
+    "duration_minutes": 30.0,
+    "successful_checks": 360,
+    "failed_checks": 0,
+    "success_rate_percent": 100.0,
+    "mean_latency_ms": 12.535,
+    "median_latency_ms": 12.268,
+    "p95_latency_ms": 25.701,
+    "max_latency_ms": 68.45
+  },
+  "failures": [],
+  "result": "PASS"
+}

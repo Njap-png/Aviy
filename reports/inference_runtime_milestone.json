@@ -1,0 +1,18 @@
+{
+  "milestone": "Aviy standalone inference runtime",
+  "verified_at_utc": "2026-11-23T12:39:08.104102+00:00",
+  "implementation": [
+    "Standalone inference runtime",
+    "Integrity-checked inference artifact loading",
+    "Tokenizer/model vocabulary compatibility validation",
+    "Text generation using the existing generation interface",
+    "Inference runtime tests"
+  ],
+  "focused_tests": ".......                                                                  [100%]\n7 passed in 3.59s",
+  "full_regression": "........................................................................ [ 21%]\n..................................................................s..... [ 42%]\n........................................................................ [ 64%]\n........................................................................ [ 85%]\n..............................................ss                         [100%]\n333 passed, 3 skipped in 13.92s",
+  "ruff_check": "All checks passed!",
+  "ruff_format_check": "2 files already formatted",
+  "trained_model_available": false,
+  "capability_claim": "Runtime software verified with an untrained randomly initialized model; no trained-model quality or intelligence claim is made.",
+  "git_operations_performed": false
+}

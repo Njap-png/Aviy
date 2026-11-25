@@ -1,0 +1,76 @@
+{
+  "format": "aviy-reasoning-engineering-evaluation-v1",
+  "created_at_utc": "2026-11-23T13:49:43.653914+00:00",
+  "evidence_class": "synthetic_engineering_fixture",
+  "model_capability_claim": false,
+  "cases": [
+    {
+      "case_id": "dependency-order",
+      "confidence": 0.95,
+      "expected_correctness": true,
+      "verified_steps": [
+        true,
+        true
+      ],
+      "failed_step_ids": [],
+      "verification": {
+        "passed": true,
+        "failed_step_ids": [],
+        "verification_rate": 1.0,
+        "confidence": 0.95,
+        "brier_score": 0.0025000000000000044
+      },
+      "brier_score": 0.0025000000000000044
+    },
+    {
+      "case_id": "failed-verification",
+      "confidence": 0.8,
+      "expected_correctness": false,
+      "verified_steps": [
+        true,
+        false
+      ],
+      "failed_step_ids": [
+        "validate"
+      ],
+      "verification": {
+        "passed": false,
+        "failed_step_ids": [
+          "validate"
+        ],
+        "verification_rate": 0.5,
+        "confidence": 0.8,
+        "brier_score": 0.6400000000000001
+      },
+      "brier_score": 0.6400000000000001
+    },
+    {
+      "case_id": "uncertain-answer",
+      "confidence": 0.5,
+      "expected_correctness": true,
+      "verified_steps": [
+        true
+      ],
+      "failed_step_ids": [],
+      "verification": {
+        "passed": true,
+        "failed_step_ids": [],
+        "verification_rate": 1.0,
+        "confidence": 0.5,
+        "brier_score": 0.25
+      },
+      "brier_score": 0.25
+    }
+  ],
+  "metrics": {
+    "case_count": 3,
+    "mean_brier_score": 0.29750000000000004,
+    "all_cases_have_verification": true,
+    "failed_case_count": 1
+  },
+  "limitations": [
+    "Synthetic verifier outcomes; no language model reasoning was evaluated.",
+    "This report validates the reasoning interface and scoring behavior only.",
+    "It is not evidence of real-world reasoning accuracy or calibration."
+  ]
+}
