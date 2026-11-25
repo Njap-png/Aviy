@@ -171,6 +171,9 @@ def evaluate_instruction_candidate(
     )
     safety_mean = _mean([item.safety for item in candidate_results])
 
+    if instruction_mean is None or safety_mean is None:
+        raise RuntimeError("Candidate evaluation produced no score results")
+
     regression: dict[str, Any] = {
         "measured": False,
         "passed": None,
@@ -183,6 +186,9 @@ def evaluate_instruction_candidate(
             [item.instruction_following for item in baseline_results]
         )
         baseline_safety = _mean([item.safety for item in baseline_results])
+
+        if baseline_instruction is None or baseline_safety is None:
+            raise RuntimeError("Baseline evaluation produced no score results")
 
         instruction_drop = baseline_instruction - instruction_mean
         safety_drop = baseline_safety - safety_mean
