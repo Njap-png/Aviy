@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 import json
 import unicodedata
 from collections import Counter
@@ -49,6 +50,11 @@ class ByteBPETokenizer:
         self.ranks = {pair: index for index, pair in enumerate(self.merges)}
         self.vocabulary_size = 256 + len(self.merges)
 
+        pieces = [bytes([index]) for index in range(256)]
+        for left, right in self.merges:
+            pieces.append(pieces[left] + pieces[right])
+        self._pieces = pieces
+
     @staticmethod
     def normalize(text: str) -> str:
         if not isinstance(text, str):
@@ -63,7 +69,7 @@ class ByteBPETokenizer:
         vocabulary_size: int = 16384,
         minimum_pair_frequency: int = 2,
     ) -> ByteBPETokenizer:
-        """Train deterministic byte-level BPE from the supplied text corpus."""
+        """Train deterministic byte-level BPE using incremental pair counts."""
         if (
             isinstance(vocabulary_size, bool)
             or not isinstance(vocabulary_size, int)
@@ -82,50 +88,190 @@ class ByteBPETokenizer:
         except TypeError as exc:
             raise TypeError("Tokenizer training texts must be iterable") from exc
 
-        sequences = []
-        for text in iterator:
-            normalized = cls.normalize(text)
-            if normalized:
-                sequences.append(list(normalized.encode("utf-8")))
+        tokens: list[int] = []
+        previous: list[int] = []
+        following: list[int] = []
+        alive: list[bool] = []
+        sequence_ids: list[int] = []
+        positions: list[int] = []
+        heads: list[int] = []
 
-        if not sequences:
+        for sequence_id, text in enumerate(iterator):
+            normalized = cls.normalize(text)
+            if not normalized:
+                continue
+
+            encoded = normalized.encode("utf-8")
+            sequence_nodes = []
+
+            for position, token in enumerate(encoded):
+                node = len(tokens)
+                sequence_nodes.append(node)
+                tokens.append(token)
+                previous.append(-1)
+                following.append(-1)
+                alive.append(True)
+                sequence_ids.append(sequence_id)
+                positions.append(position)
+
+            if sequence_nodes:
+                heads.append(sequence_nodes[0])
+                for index in range(len(sequence_nodes) - 1):
+                    left = sequence_nodes[index]
+                    right = sequence_nodes[index + 1]
+                    following[left] = right
+                    previous[right] = left
+
+        if not tokens:
             raise ValueError("Tokenizer training requires non-empty approved text")
+
+        # Pair occurrence heaps retain the original sequence and position order.
+        pair_occurrences: dict[
+            tuple[int, int],
+            list[tuple[int, int, int, int]],
+        ] = {}
+        pair_counts: Counter[tuple[int, int]] = Counter()
+        candidates: list[
+            tuple[int, int, int, int, tuple[int, int]]
+        ] = []
+
+        def valid_occurrence(
+            pair: tuple[int, int],
+            occurrence: tuple[int, int, int, int],
+        ) -> bool:
+            _, _, left, right = occurrence
+            return (
+                alive[left]
+                and alive[right]
+                and following[left] == right
+                and tokens[left] == pair[0]
+                and tokens[right] == pair[1]
+            )
+
+        def earliest(pair: tuple[int, int]):
+            occurrences = pair_occurrences.get(pair)
+            if occurrences is None:
+                return None
+
+            while occurrences and not valid_occurrence(pair, occurrences[0]):
+                heapq.heappop(occurrences)
+
+            return occurrences[0] if occurrences else None
+
+        def refresh(pair: tuple[int, int]) -> None:
+            count = pair_counts[pair]
+            if count <= 0:
+                return
+
+            first = earliest(pair)
+            if first is None:
+                return
+
+            sequence_id, position, left, right = first
+            heapq.heappush(
+                candidates,
+                (-count, sequence_id, position, left, right, pair),
+            )
+
+        def add_edge(left: int, right: int) -> None:
+            pair = (tokens[left], tokens[right])
+            occurrences = pair_occurrences.setdefault(pair, [])
+            occurrence = (
+                sequence_ids[left],
+                positions[left],
+                left,
+                right,
+            )
+            heapq.heappush(occurrences, occurrence)
+            pair_counts[pair] += 1
+            refresh(pair)
+
+        def remove_edge(left: int, right: int) -> None:
+            pair = (tokens[left], tokens[right])
+            pair_counts[pair] -= 1
+            refresh(pair)
+
+        for node in range(len(tokens)):
+            right = following[node]
+            if right != -1:
+                add_edge(node, right)
 
         merges: list[tuple[int, int]] = []
         next_id = 256
 
-        while next_id < vocabulary_size:
-            counts: Counter[tuple[int, int]] = Counter()
-            for sequence in sequences:
-                counts.update(pairwise(sequence))
+        while next_id < vocabulary_size and candidates:
+            selected = None
 
-            if not counts:
+            while candidates:
+                negative_count, sequence_id, position, left, right, pair = (
+                    heapq.heappop(candidates)
+                )
+
+                count = pair_counts[pair]
+                first = earliest(pair)
+
+                if count <= 0 or first is None:
+                    continue
+
+                if (
+                    -negative_count != count
+                    or first != (sequence_id, position, left, right)
+                ):
+                    continue
+
+                selected = pair
                 break
 
-            pair, frequency = counts.most_common(1)[0]
-            if frequency < minimum_pair_frequency:
+            if selected is None:
+                break
+
+            if pair_counts[selected] < minimum_pair_frequency:
                 break
 
             merged_id = next_id
             next_id += 1
-            merges.append(pair)
+            merges.append(selected)
 
-            updated = []
-            for sequence in sequences:
-                result = []
-                index = 0
-                while index < len(sequence):
-                    if (
-                        index + 1 < len(sequence)
-                        and (sequence[index], sequence[index + 1]) == pair
-                    ):
-                        result.append(merged_id)
-                        index += 2
-                    else:
-                        result.append(sequence[index])
-                        index += 1
-                updated.append(result)
-            sequences = updated
+            occurrences = pair_occurrences[selected]
+
+            # Merge every currently valid occurrence in left-to-right order.
+            while True:
+                first = earliest(selected)
+                if first is None:
+                    break
+
+                heapq.heappop(occurrences)
+                _, _, left, right = first
+
+                if not valid_occurrence(selected, first):
+                    continue
+
+                before = previous[left]
+                after = following[right]
+
+                if before != -1:
+                    remove_edge(before, left)
+
+                remove_edge(left, right)
+
+                if after != -1:
+                    remove_edge(right, after)
+
+                tokens[left] = merged_id
+                following[left] = after
+
+                if after != -1:
+                    previous[after] = left
+
+                alive[right] = False
+                previous[right] = -1
+                following[right] = -1
+
+                if before != -1:
+                    add_edge(before, left)
+
+                if after != -1:
+                    add_edge(left, after)
 
         return cls(merges)
 
@@ -152,26 +298,73 @@ class ByteBPETokenizer:
         )
 
     def encode(self, text: str) -> list[int]:
-        sequence = list(self.normalize(text).encode("utf-8"))
-        while len(sequence) > 1:
-            candidates = [
-                (self.ranks[(sequence[i], sequence[i + 1])], i)
-                for i in range(len(sequence) - 1)
-                if (sequence[i], sequence[i + 1]) in self.ranks
-            ]
-            if not candidates:
-                break
-            _, index = min(candidates)
-            pair = (sequence[index], sequence[index + 1])
-            merged_id = 256 + self.ranks[pair]
-            sequence[index : index + 2] = [merged_id]
-        return sequence
+        """Encode text using a priority queue while preserving BPE merge order."""
+        encoded = self.normalize(text).encode("utf-8")
+        if not encoded:
+            return []
+
+        tokens = list(encoded)
+        previous = list(range(-1, len(tokens) - 1))
+        following = list(range(1, len(tokens) + 1))
+        following[-1] = -1
+        alive = [True] * len(tokens)
+
+        candidates: list[tuple[int, int, int, int]] = []
+
+        def add_candidate(left: int, right: int) -> None:
+            if left == -1 or right == -1:
+                return
+
+            pair = (tokens[left], tokens[right])
+            rank = self.ranks.get(pair)
+            if rank is not None:
+                heapq.heappush(
+                    candidates,
+                    (rank, left, left, right),
+                )
+
+        for left in range(len(tokens) - 1):
+            add_candidate(left, left + 1)
+
+        while candidates:
+            rank, _, left, right = heapq.heappop(candidates)
+
+            if (
+                not alive[left]
+                or not alive[right]
+                or following[left] != right
+                or self.ranks.get((tokens[left], tokens[right])) != rank
+            ):
+                continue
+
+            before = previous[left]
+            after = following[right]
+
+            tokens[left] = 256 + rank
+            following[left] = after
+
+            if after != -1:
+                previous[after] = left
+
+            alive[right] = False
+            previous[right] = -1
+            following[right] = -1
+
+            add_candidate(before, left)
+            add_candidate(left, after)
+
+        result = []
+        node = 0
+        while node != -1:
+            if alive[node]:
+                result.append(tokens[node])
+            node = following[node]
+
+        return result
 
     def decode(self, token_ids: Iterable[int]) -> str:
         """Decode strictly validated integer token IDs into normalized text."""
-        pieces: dict[int, bytes] = {index: bytes([index]) for index in range(256)}
-        for index, (left, right) in enumerate(self.merges):
-            pieces[256 + index] = pieces[left] + pieces[right]
+        pieces = self._pieces
 
         try:
             iterator = iter(token_ids)
@@ -182,7 +375,7 @@ class ByteBPETokenizer:
         for token in iterator:
             if isinstance(token, bool) or not isinstance(token, int):
                 raise TypeError("Token IDs must be integers, not booleans or other types")
-            if token not in pieces:
+            if token < 0 or token >= len(pieces):
                 raise ValueError(f"Unknown tokenizer token ID: {token}")
             output.append(pieces[token])
 
@@ -193,9 +386,7 @@ class ByteBPETokenizer:
 
     def decode_generated(self, token_ids: Iterable[int]) -> str:
         """Decode model output, replacing incomplete or invalid UTF-8 sequences."""
-        pieces: dict[int, bytes] = {index: bytes([index]) for index in range(256)}
-        for index, (left, right) in enumerate(self.merges):
-            pieces[256 + index] = pieces[left] + pieces[right]
+        pieces = self._pieces
 
         try:
             iterator = iter(token_ids)
@@ -206,7 +397,7 @@ class ByteBPETokenizer:
         for token in iterator:
             if isinstance(token, bool) or not isinstance(token, int):
                 raise TypeError("Token IDs must be integers, not booleans or other types")
-            if token not in pieces:
+            if token < 0 or token >= len(pieces):
                 raise ValueError(f"Unknown tokenizer token ID: {token}")
             output.append(pieces[token])
 
