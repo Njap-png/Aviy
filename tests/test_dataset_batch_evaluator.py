@@ -7,7 +7,6 @@ from aviy.corpus_governance.dataset_batch_evaluator import (
     run_batch,
 )
 
-
 METADATA = {
     "source_id": "aviy_batch_synthetic",
     "source_name": "Synthetic Batch Test",
@@ -172,4 +171,10 @@ def test_rejects_unsupported_manifest_version(tmp_path):
     )
 
     with pytest.raises(ValueError, match="schema_version"):
+        load_batch_manifest(manifest)
+
+def test_non_object_dataset_entry_preserves_value_error_contract(tmp_path):
+    manifest = write_manifest(tmp_path, [None])
+
+    with pytest.raises(ValueError, match="Dataset entry 0 must be an object"):
         load_batch_manifest(manifest)

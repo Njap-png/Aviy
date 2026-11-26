@@ -4,7 +4,6 @@ from pathlib import Path
 
 import aviy.corpus_governance.dataset_batch_evaluator as batch_module
 
-
 METADATA = {
     "source_id": "aviy_batch_failure_test",
     "source_name": "Synthetic Failure Test",

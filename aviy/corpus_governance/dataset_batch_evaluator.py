@@ -11,10 +11,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
 
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -72,7 +71,7 @@ def load_batch_manifest(manifest_path: str | Path):
 
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
-            raise ValueError(f"Dataset entry {index} must be an object.")
+            raise ValueError(f"Dataset entry {index} must be an object.") # noqa: TRY004 - malformed manifest data remains a ValueError.
 
         name = entry.get("name")
         if not isinstance(name, str) or not NAME_PATTERN.fullmatch(name):
@@ -188,7 +187,7 @@ def run_batch(manifest_path: str | Path, output_path: str | Path):
         batch_report = {
             "schema_version": "1.0",
             "status": "COMPLETED" if failed == 0 else "COMPLETED_WITH_FAILURES",
-            "evaluated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "evaluated_at_utc": datetime.now(UTC).isoformat(),
             "manifest_sha256": sha256_file(manifest),
             "datasets_total": len(results),
             "datasets_completed": completed,

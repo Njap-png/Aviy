@@ -4,7 +4,6 @@ from dataclasses import replace
 
 import pytest
 
-from aviy.data.pipeline import DatasetAudit, DatasetRecord, PreparedDataset
 from aviy.corpus_governance.engine import (
     GovernanceError,
     SourceRegistration,
@@ -15,7 +14,7 @@ from aviy.corpus_governance.pipeline_adapter import (
     RecordGovernanceMetadata,
     govern_prepared_dataset,
 )
-
+from aviy.data.pipeline import DatasetAudit, DatasetRecord, PreparedDataset
 
 SOURCE_URI = "https://example.org/datasets/aviy-v1"
 
