@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "register_type": "candidate_source_review",
+  "not_a_source_approval_registry": true,
+  "training_authorized": false,
+  "tokenizer_training_authorized": false,
+  "sources": [
+    {
+      "source_id": "fineweb_english",
+      "source_name": "HuggingFaceFW/fineweb",
+      "source_uri": "https://huggingface.co/datasets/HuggingFaceFW/fineweb",
+      "source_revision": "9bb295ddab0e05d785b879661af7260fed5140fc",
+      "configuration": "sample-10BT",
+      "inspected_split": "train",
+      "review_status": "pending",
+      "training_allowed": false,
+      "inspection_sample": {
+        "path": "data/corpus_pilots/fineweb_sw_inspection_20261126/fineweb_english.jsonl",
+        "records": 50,
+        "bytes": 165307,
+        "sha256": "620916FD42BF84472ECD7E07C0A913FFB0348C7E5E924F7FD4B58B4DB0C9DE2C"
+      },
+      "unresolved_gates": [
+        "dataset and Common Crawl terms review",
+        "underlying webpage rights assessment",
+        "attribution plan",
+        "human English-language review",
+        "privacy review beyond automated screening",
+        "source-provided script metadata limitation"
+      ]
+    },
+    {
+      "source_id": "fineweb2_swahili",
+      "source_name": "HuggingFaceFW/fineweb-2",
+      "source_uri": "https://huggingface.co/datasets/HuggingFaceFW/fineweb-2",
+      "source_revision": "f9c13333eb981300149d5ca60a8e9d659b276b9",
+      "configuration": "swh_Latn",
+      "inspected_split": "train",
+      "review_status": "pending",
+      "training_allowed": false,
+      "inspection_sample": {
+        "path": "data/corpus_pilots/fineweb_sw_inspection_20261126/fineweb2_swahili.jsonl",
+        "records": 50,
+        "bytes": 212248,
+        "sha256": "1C5B4452B541D967B4A658897EF288D228AB444CC4ED02EFBAAFD7EBB07D9D50"
+      },
+      "unresolved_gates": [
+        "dataset and Common Crawl terms review",
+        "underlying webpage rights assessment",
+        "attribution plan",
+        "human Swahili-language review",
+        "privacy review beyond automated screening",
+        "source diversity assessment"
+      ]
+    },
+    {
+      "source_id": "open_web_math",
+      "source_name": "OpenWebMath",
+      "source_uri": "https://huggingface.co/datasets/open-web-math/open-web-math",
+      "review_status": "candidate_not_reviewed",
+      "training_allowed": false,
+      "unresolved_gates": [
+        "immutable revision",
+        "license and underlying content rights",
+        "attribution",
+        "mathematical quality inspection",
+        "privacy and duplication review"
+      ]
+    },
+    {
+      "source_id": "owasp_cheat_sheets",
+      "source_name": "OWASP Cheat Sheet Series",
+      "source_uri": "https://github.com/OWASP/CheatSheetSeries",
+      "review_status": "conditional_candidate_not_approved",
+      "training_allowed": false,
+      "unresolved_gates": [
+        "immutable repository revision",
+        "CC BY-SA 4.0 obligations review",
+        "attribution and notice preservation",
+        "share-alike and redistribution assessment",
+        "defensive-scope content review"
+      ]
+    },
+    {
+      "source_id": "the_stack_v2",
+      "source_name": "The Stack v2",
+      "source_uri": "https://huggingface.co/datasets/bigcode/the-stack-v2",
+      "review_status": "deferred",
+      "training_allowed": false,
+      "unresolved_gates": [
+        "per-file license verification",
+        "opt-out and removal process",
+        "attribution and access conditions",
+        "provenance and privacy controls"
+      ]
+    },
+    {
+      "source_id": "dolly_instruction_dataset",
+      "source_name": "Databricks Dolly 15K",
+      "source_uri": "https://huggingface.co/datasets/databricks/databricks-dolly-15k",
+      "review_status": "separate_instruction_stage_pending",
+      "training_stage": "instruction_tuning_only",
+      "training_allowed": false,
+      "unresolved_gates": [
+        "prepared clean dataset provenance verification",
+        "source revision and hash verification",
+        "attribution and share-alike review",
+        "separate instruction-stage approval"
+      ],
+      "restriction": "Do not inspect or use the protected raw source export."
+    }
+  ]
+}
