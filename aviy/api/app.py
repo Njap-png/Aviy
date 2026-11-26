@@ -1,3 +1,5 @@
+import base64
+import binascii
 from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
@@ -5,6 +7,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 
+from aviy.data_ingestion.service import intake_bytes, read_history
 from aviy.infrastructure.resources import (
     ResourceMonitor,
     ResourceQuota,
@@ -50,6 +53,43 @@ def create_app(
         if not identity:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
         return identity
+
+
+    @app.post("/v1/ingestion/intake", status_code=201)
+    def ingestion_intake(
+        payload: dict[str, object],
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        authenticate(authorization)
+        filename = payload.get("filename")
+        encoded = payload.get("content_base64")
+        metadata = payload.get("metadata")
+        name = payload.get("name")
+        file_format = payload.get("format")
+
+        if not isinstance(filename, str) or not isinstance(encoded, str):
+            raise HTTPException(status_code=400, detail="filename and content_base64 are required")
+        if len(encoded) > 70 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Upload exceeds the 50 MiB limit")
+        try:
+            content = base64.b64decode(encoded, validate=True)
+            result = intake_bytes(
+                filename,
+                content,
+                metadata,
+                name=name if isinstance(name, str) else None,
+                file_format=file_format if isinstance(file_format, str) else None,
+            )
+        except (ValueError, binascii.Error, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return result
+
+    @app.get("/v1/ingestion/history")
+    def ingestion_history(
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        authenticate(authorization)
+        return {"items": read_history()}
 
     @app.get("/health")
     def health() -> dict[str, str]:

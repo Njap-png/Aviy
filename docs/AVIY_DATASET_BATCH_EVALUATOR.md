@@ -43,8 +43,22 @@ The output directory must not already exist. Each dataset receives its own
 evaluator output directory. `batch_report.json` contains aggregate results,
 per-dataset statuses, input hashes, report hashes, and staged/quarantined counts.
 
+The batch is assembled in a temporary sibling directory. The final output
+directory is published with a same-filesystem directory rename only after all
+dataset attempts and the batch report have completed. An unexpected ordinary
+failure cleans up the temporary directory and does not publish a partial final
+output. If another process creates the destination before publication, that
+destination is preserved and publication fails.
+
+A hard process termination or power loss can leave an orphan directory named
+`.OUTPUTNAME.aviy-staging-*` beside the requested output. The evaluator does
+not automatically delete such directories because they may belong to another
+active process. Inspect them and confirm no batch is running before manually
+removing one.
+
 A failed dataset is recorded as FAILED while remaining datasets continue.
-The command exits non-zero if any dataset fails.
+Such a batch still publishes its complete report with status
+`COMPLETED_WITH_FAILURES`. The command exits non-zero if any dataset fails.
 
 ## Governance boundary
 

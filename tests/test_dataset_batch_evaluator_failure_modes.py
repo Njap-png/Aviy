@@ -175,3 +175,84 @@ def test_zero_exit_without_readable_report_is_failure(
     assert report["datasets"][0]["report_sha256"] is None
 
     assert report["datasets"][1]["status"] == "COMPLETED"
+
+
+def test_unexpected_batch_error_cleans_staging_without_publishing(
+    tmp_path, monkeypatch
+):
+    entry = create_dataset(tmp_path, "unexpected_error")
+    manifest = write_manifest(tmp_path, [entry])
+    output = tmp_path / "batch_output"
+
+    real_hash = batch_module.sha256_file
+
+    def controlled_hash(path):
+        if Path(path).name == "batch_manifest.json":
+            raise RuntimeError("synthetic unexpected report-building failure")
+        return real_hash(path)
+
+    monkeypatch.setattr(batch_module, "sha256_file", controlled_hash)
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="synthetic unexpected"):
+        batch_module.run_batch(manifest, output)
+
+    assert not output.exists()
+    assert list(tmp_path.glob(".batch_output.aviy-staging-*")) == []
+
+
+def test_output_collision_during_publish_preserves_existing_directory(
+    tmp_path, monkeypatch
+):
+    entry = create_dataset(tmp_path, "publish_collision")
+    manifest = write_manifest(tmp_path, [entry])
+    output = tmp_path / "batch_output"
+
+    def simulate_destination_collision(source, destination):
+        destination = Path(destination)
+        destination.mkdir()
+        (destination / "sentinel.txt").write_text(
+            "preserve existing destination", encoding="utf-8"
+        )
+        raise FileExistsError("synthetic destination collision")
+
+    monkeypatch.setattr(batch_module.os, "rename", simulate_destination_collision)
+
+    import pytest
+
+    with pytest.raises(FileExistsError, match="destination collision"):
+        batch_module.run_batch(manifest, output)
+
+    assert (output / "sentinel.txt").read_text(encoding="utf-8") == (
+        "preserve existing destination"
+    )
+    assert not (output / "batch_report.json").exists()
+    assert list(tmp_path.glob(".batch_output.aviy-staging-*")) == []
+
+
+def test_final_output_is_not_visible_until_batch_finishes(
+    tmp_path, monkeypatch
+):
+    entry = create_dataset(tmp_path, "publication_timing")
+    manifest = write_manifest(tmp_path, [entry])
+    output = tmp_path / "batch_output"
+
+    import subprocess
+
+    real_run = subprocess.run
+    observed = []
+
+    def inspect_during_evaluation(command, **kwargs):
+        observed.append(output.exists())
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(batch_module.subprocess, "run", inspect_during_evaluation)
+
+    report = batch_module.run_batch(manifest, output)
+
+    assert observed == [False]
+    assert report["status"] == "COMPLETED"
+    assert output.is_dir()
+    assert (output / "batch_report.json").is_file()
+    assert (output / "publication_timing" / "evaluation_report.json").is_file()

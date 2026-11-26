@@ -22,6 +22,31 @@ button{cursor:pointer}
 <input id="token" type="password" autocomplete="off">
 <button id="check" type="button">Check API status</button>
 <pre id="result" role="status" aria-live="polite">Ready.</pre>
+
+<section id="ingestion" aria-labelledby="ingestion-title">
+<hr>
+<h2 id="ingestion-title">Data Ingestion</h2>
+<p>Import a local JSONL, JSON, CSV or TXT file. Imports are evaluated by Aviy's existing dataset evaluator.</p>
+<label for="ingest-file">Dataset file</label><br>
+<input id="ingest-file" type="file" accept=".jsonl,.json,.csv,.txt"><br>
+<label for="ingest-name">Dataset name</label><br>
+<input id="ingest-name" type="text" maxlength="64" placeholder="my_dataset"><br>
+<label for="ingest-format">Format</label><br>
+<select id="ingest-format">
+<option value="">Detect from extension</option>
+<option value="jsonl">JSONL</option>
+<option value="json">JSON</option>
+<option value="csv">CSV</option>
+<option value="txt">TXT</option>
+</select><br>
+<label for="ingest-metadata">Complete source metadata (JSON)</label><br>
+<textarea id="ingest-metadata" rows="12" style="width:min(100%,45rem);font:inherit" placeholder='{"source_id":"...","source_name":"...","source_uri":"https://...","revision":"...","license_id":"CC0-1.0","license_evidence_uri":"https://...","terms_uri":"https://...","attribution_text":"...","rights_scope":"dataset_and_contents","underlying_rights_status":"covered","language":"en","script":"Latn"}'></textarea><br>
+<button id="ingest-submit" type="button">Import and evaluate</button>
+<button id="ingest-history" type="button">Refresh history</button>
+<pre id="ingest-result" role="status" aria-live="polite">No ingestion submitted.</pre>
+<p><strong>Important:</strong> automated staging is not source approval, record approval, legal clearance or training authorization.</p>
+</section>
+
 </main>
 <script>
 const token=document.getElementById("token");
@@ -35,6 +60,48 @@ document.getElementById("check").addEventListener("click",async()=>{
   result.textContent=JSON.stringify(await response.json(),null,2);
  }catch(error){result.textContent="Request failed: "+error.message;}
 });
+
+const ingestResult=document.getElementById("ingest-result");
+const ingestToken=document.getElementById("token");
+document.getElementById("ingest-submit").addEventListener("click",async()=>{
+ const file=document.getElementById("ingest-file").files[0];
+ if(!file){ingestResult.textContent="Choose a dataset file first.";return;}
+ if(file.size>50*1024*1024){ingestResult.textContent="File exceeds 50 MiB.";return;}
+ let metadata;
+ try{metadata=JSON.parse(document.getElementById("ingest-metadata").value);}
+ catch(error){ingestResult.textContent="Metadata JSON is invalid: "+error.message;return;}
+ ingestResult.textContent="Reading and submitting file...";
+ try{
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  let binary="";
+  for(let offset=0;offset<bytes.length;offset+=0x8000)
+   binary+=String.fromCharCode(...bytes.subarray(offset,offset+0x8000));
+  const payload={
+   filename:file.name,
+   content_base64:btoa(binary),
+   metadata,
+   name:document.getElementById("ingest-name").value||undefined,
+   format:document.getElementById("ingest-format").value||undefined
+  };
+  const response=await fetch("/v1/ingestion/intake",{
+   method:"POST",
+   headers:{"Content-Type":"application/json","Authorization":"Bearer "+ingestToken.value},
+   body:JSON.stringify(payload)
+  });
+  const data=await response.json();
+  ingestResult.textContent=JSON.stringify(data,null,2);
+ }catch(error){ingestResult.textContent="Ingestion request failed: "+error.message;}
+});
+document.getElementById("ingest-history").addEventListener("click",async()=>{
+ ingestResult.textContent="Loading history...";
+ try{
+  const response=await fetch("/v1/ingestion/history",{
+   headers:{Authorization:"Bearer "+ingestToken.value}
+  });
+  ingestResult.textContent=JSON.stringify(await response.json(),null,2);
+ }catch(error){ingestResult.textContent="History request failed: "+error.message;}
+});
+
 </script>
 </body>
 </html>

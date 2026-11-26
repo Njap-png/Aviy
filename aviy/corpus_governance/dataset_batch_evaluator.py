@@ -5,9 +5,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -114,97 +117,119 @@ def run_batch(manifest_path: str | Path, output_path: str | Path):
     if output_root == manifest:
         raise ValueError("Output directory cannot be the manifest file.")
 
-    output_root.mkdir(parents=True, exist_ok=False)
-    results = []
+    # Build the complete batch beside the destination so final publication
+    # can use a same-filesystem directory rename.
+    output_root.parent.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(tempfile.mkdtemp(
+        prefix=f".{output_root.name}.aviy-staging-",
+        dir=str(output_root.parent),
+    ))
+    published = False
 
-    for dataset in datasets:
-        name = dataset["name"]
-        dataset_output = output_root / name
-        report_path = dataset_output / "evaluation_report.json"
+    try:
+        results = []
 
-        command = [
-            sys.executable,
-            "-m",
-            EVALUATOR_MODULE,
-            "--records",
-            str(dataset["records"]),
-            "--metadata",
-            str(dataset["metadata"]),
-            "--output",
-            str(dataset_output),
-        ]
+        for dataset in datasets:
+            name = dataset["name"]
+            dataset_output = staging_root / name
+            report_path = dataset_output / "evaluation_report.json"
 
-        try:
-            process = subprocess.run(
-                command,
-                cwd=str(PROJECT_ROOT),
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            return_code = process.returncode
-        except OSError:
-            return_code = -1
+            command = [
+                sys.executable,
+                "-m",
+                EVALUATOR_MODULE,
+                "--records",
+                str(dataset["records"]),
+                "--metadata",
+                str(dataset["metadata"]),
+                "--output",
+                str(dataset_output),
+            ]
 
-        report = read_report(report_path)
-        successful = return_code == 0 and report is not None
+            try:
+                process = subprocess.run(
+                    command,
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                return_code = process.returncode
+            except OSError:
+                return_code = -1
 
-        accepted_path = dataset_output / "corrected_accepted.jsonl"
-        quarantined_path = dataset_output / "quarantined.jsonl"
+            report = read_report(report_path)
+            successful = return_code == 0 and report is not None
 
-        results.append({
-            "name": name,
-            "status": "COMPLETED" if successful else "FAILED",
-            "evaluator_status": report.get("status") if report else None,
-            "return_code": return_code,
-            "records_input_sha256": sha256_file(dataset["records"]),
-            "metadata_input_sha256": sha256_file(dataset["metadata"]),
-            "report_sha256": (
-                sha256_file(report_path) if report_path.is_file() else None
+            accepted_path = dataset_output / "corrected_accepted.jsonl"
+            quarantined_path = dataset_output / "quarantined.jsonl"
+
+            results.append({
+                "name": name,
+                "status": "COMPLETED" if successful else "FAILED",
+                "evaluator_status": report.get("status") if report else None,
+                "return_code": return_code,
+                "records_input_sha256": sha256_file(dataset["records"]),
+                "metadata_input_sha256": sha256_file(dataset["metadata"]),
+                "report_sha256": (
+                    sha256_file(report_path) if report_path.is_file() else None
+                ),
+                "records_staged": count_jsonl(accepted_path),
+                "records_quarantined": count_jsonl(quarantined_path),
+                "output_directory": str(output_root / name),
+                "error": None if successful else (
+                    "Evaluator failed or did not produce a readable report."
+                ),
+            })
+
+        failed = sum(item["status"] == "FAILED" for item in results)
+        completed = len(results) - failed
+
+        batch_report = {
+            "schema_version": "1.0",
+            "status": "COMPLETED" if failed == 0 else "COMPLETED_WITH_FAILURES",
+            "evaluated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "manifest_sha256": sha256_file(manifest),
+            "datasets_total": len(results),
+            "datasets_completed": completed,
+            "datasets_failed": failed,
+            "records_staged": sum(x["records_staged"] for x in results),
+            "records_quarantined": sum(x["records_quarantined"] for x in results),
+            "datasets": results,
+            "production_source_registry_changed": False,
+            "tokenizer_training_authorized": False,
+            "pretraining_authorized": False,
+            "training_started": False,
+            "legal_rights_independently_verified": False,
+            "note": (
+                "Technical screening only. This report does not grant legal "
+                "clearance, source approval, record approval, tokenizer "
+                "authorization, or training authorization."
             ),
-            "records_staged": count_jsonl(accepted_path),
-            "records_quarantined": count_jsonl(quarantined_path),
-            "output_directory": str(dataset_output),
-            "error": None if successful else (
-                "Evaluator failed or did not produce a readable report."
-            ),
-        })
+        }
 
-    failed = sum(item["status"] == "FAILED" for item in results)
-    completed = len(results) - failed
+        report_path = staging_root / "batch_report.json"
+        temporary_path = staging_root / "batch_report.json.tmp"
+        temporary_path.write_text(
+            json.dumps(batch_report, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(report_path)
 
-    batch_report = {
-        "schema_version": "1.0",
-        "status": "COMPLETED" if failed == 0 else "COMPLETED_WITH_FAILURES",
-        "evaluated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "manifest_sha256": sha256_file(manifest),
-        "datasets_total": len(results),
-        "datasets_completed": completed,
-        "datasets_failed": failed,
-        "records_staged": sum(x["records_staged"] for x in results),
-        "records_quarantined": sum(x["records_quarantined"] for x in results),
-        "datasets": results,
-        "production_source_registry_changed": False,
-        "tokenizer_training_authorized": False,
-        "pretraining_authorized": False,
-        "training_started": False,
-        "legal_rights_independently_verified": False,
-        "note": (
-            "Technical screening only. This report does not grant legal "
-            "clearance, source approval, record approval, tokenizer "
-            "authorization, or training authorization."
-        ),
-    }
+        # A same-filesystem rename publishes the entire completed directory.
+        # If another process creates the destination first, publication fails
+        # without replacing or modifying that destination.
+        os.rename(staging_root, output_root)
+        published = True
 
-    report_path = output_root / "batch_report.json"
-    temporary_path = output_root / "batch_report.json.tmp"
-    temporary_path.write_text(
-        json.dumps(batch_report, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    temporary_path.replace(report_path)
+        return batch_report
 
-    return batch_report
+    finally:
+        # Clean up our private staging directory after ordinary failures.
+        # A hard process termination or power loss can still leave an orphan;
+        # such directories are deliberately not auto-deleted on later runs.
+        if not published and staging_root.exists():
+            shutil.rmtree(staging_root, ignore_errors=True)
 
 
 def main(argv=None):
