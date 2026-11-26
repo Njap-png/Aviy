@@ -78,6 +78,9 @@ def test_evaluation_uses_actual_inference_and_records_outputs():
     assert report["candidate"]["preference"] is None
     assert report["candidate"]["preference_measured"] is False
     assert report["regression"]["measured"] is False
+    assert report["complete"] is False
+    assert report["status"] == "incomplete"
+    assert report["passed"] is False
     assert len(report["results"]) == report["cases"]
     assert all(isinstance(item["generated_response"], str) for item in report["results"])
 
@@ -99,6 +102,8 @@ def test_evaluation_can_measure_preference_and_baseline_regression():
     assert report["candidate"]["preference_measured"] is True
     assert report["regression"]["measured"] is True
     assert report["regression"]["passed"] is True
+    assert report["complete"] is True
+    assert report["status"] == "complete"
     assert report["passed"] is True
 
 
@@ -188,3 +193,44 @@ def test_evaluator_cannot_claim_preference_without_preference_callback():
 
     assert report["candidate"]["preference"] is None
     assert report["scope"]["preference"] == "not_measured"
+
+
+def test_preference_below_threshold_fails_complete_evaluation():
+    report = evaluate_instruction_candidate(
+        make_engine(),
+        make_dataset(),
+        passing_evaluator,
+        preference_evaluator=lambda prompt, answer: 0.4,
+        baseline_engine=make_engine(),
+        generation_config=GenerationConfig(max_new_tokens=1),
+        minimum_preference_score=0.7,
+    )
+
+    assert report["complete"] is True
+    assert report["candidate"]["preference"] == 0.4
+    assert report["passed"] is False
+
+
+def test_preference_without_baseline_is_incomplete():
+    report = evaluate_instruction_candidate(
+        make_engine(),
+        make_dataset(),
+        passing_evaluator,
+        preference_evaluator=lambda prompt, answer: 0.9,
+        generation_config=GenerationConfig(max_new_tokens=1),
+    )
+
+    assert report["candidate"]["preference_measured"] is True
+    assert report["regression"]["measured"] is False
+    assert report["complete"] is False
+    assert report["passed"] is False
+
+
+def test_evaluation_rejects_invalid_preference_threshold():
+    with pytest.raises(ValueError, match="minimum_preference_score"):
+        evaluate_instruction_candidate(
+            make_engine(),
+            make_dataset(),
+            passing_evaluator,
+            minimum_preference_score=1.5,
+        )
