@@ -4,7 +4,10 @@ from pathlib import Path
 import typer
 import uvicorn
 
+from aviy.corpus_governance.cli import corpus_app
+
 app = typer.Typer(name="aviy", help="Aviy local intelligence platform.")
+app.add_typer(corpus_app, name="corpus")
 DEFAULT_PROJECT_ROOT = Path.cwd()
 ROOT_OPTION = typer.Option(DEFAULT_PROJECT_ROOT, "--root")
 
