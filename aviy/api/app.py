@@ -1,13 +1,19 @@
 import base64
 import binascii
+import json
 from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 
-from aviy.data_ingestion.service import intake_bytes, read_history
+from aviy.data_ingestion.service import (
+    MAX_FILE_BYTES,
+    intake_bytes,
+    read_history,
+)
 from aviy.infrastructure.resources import (
     ResourceMonitor,
     ResourceQuota,
@@ -56,11 +62,63 @@ def create_app(
 
 
     @app.post("/v1/ingestion/intake", status_code=201)
-    def ingestion_intake(
-        payload: dict[str, object],
+    async def ingestion_intake(
+        request: Request,
         authorization: str | None = Header(default=None),
     ) -> dict[str, object]:
         authenticate(authorization)
+
+        max_base64_chars = 4 * ((MAX_FILE_BYTES + 2) // 3)
+        max_request_bytes = max_base64_chars + 1024 * 1024
+
+        content_length = request.headers.get("content-length")
+
+        if content_length is not None:
+            try:
+                declared_length = int(content_length)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid Content-Length header",
+                ) from None
+
+            if declared_length < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid Content-Length header",
+                )
+
+            if declared_length > max_request_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Upload exceeds the request size limit",
+                )
+
+        body = bytearray()
+
+        async for chunk in request.stream():
+            body.extend(chunk)
+
+            if len(body) > max_request_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Upload exceeds the request size limit",
+                )
+
+        try:
+            payload = json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            raise HTTPException(
+                status_code=400,
+                detail="Request body must be valid JSON",
+            ) from None
+
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=400,
+                detail="Request body must be a JSON object",
+            )
+
         filename = payload.get("filename")
         encoded = payload.get("content_base64")
         metadata = payload.get("metadata")
@@ -68,20 +126,70 @@ def create_app(
         file_format = payload.get("format")
 
         if not isinstance(filename, str) or not isinstance(encoded, str):
-            raise HTTPException(status_code=400, detail="filename and content_base64 are required")
-        if len(encoded) > 70 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Upload exceeds the 50 MiB limit")
+            raise HTTPException(
+                status_code=400,
+                detail="filename and content_base64 are required",
+            )
+
+        if len(encoded) > max_base64_chars:
+            raise HTTPException(
+                status_code=413,
+                detail="Upload exceeds the 50 MiB limit",
+            )
+
+        if name is not None and not isinstance(name, str):
+            raise HTTPException(
+                status_code=400,
+                detail="name must be a string",
+            )
+
+        if file_format is not None and not isinstance(file_format, str):
+            raise HTTPException(
+                status_code=400,
+                detail="format must be a string",
+            )
+
+        if not isinstance(metadata, dict):
+            raise HTTPException(
+                status_code=400,
+                detail="metadata must be an object",
+            )
+
         try:
-            content = base64.b64decode(encoded, validate=True)
-            result = intake_bytes(
+            content = base64.b64decode(
+                encoded,
+                validate=True,
+            )
+
+            if len(content) > MAX_FILE_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Upload exceeds the 50 MiB limit",
+                )
+
+            result = await run_in_threadpool(
+                intake_bytes,
                 filename,
                 content,
                 metadata,
-                name=name if isinstance(name, str) else None,
-                file_format=file_format if isinstance(file_format, str) else None,
+                name,
+                file_format,
             )
-        except (ValueError, binascii.Error, OSError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        except HTTPException:
+            raise
+
+        except (
+            ValueError,
+            binascii.Error,
+            OSError,
+            TimeoutError,
+        ) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            ) from exc
+
         return result
 
     @app.get("/v1/ingestion/history")

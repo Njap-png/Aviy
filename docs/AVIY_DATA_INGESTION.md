@@ -54,6 +54,32 @@ the supplied metadata, a generated batch manifest and an ingestion report.
 The existing batch evaluator publishes its own results under `evaluation/`.
 A local append-only JSONL history is stored at `data/ingestion/history.jsonl`.
 
+## Security and reliability safeguards
+
+The intake service enforces a 50 MiB decoded file limit and validates UTF-8,
+supported formats, record structure, dataset names and filenames. Path
+separators, drive-qualified paths, control characters and reserved Windows
+device names are rejected.
+
+The API bounds the streamed request body and Base64 field before decoding,
+validates optional field types, and retains the existing bearer-token
+authentication requirement. Both ingestion API endpoints remain authenticated.
+
+A storage lock coordinates local intake and history operations across threads
+and processes. Identical submissions with the same filename, format, dataset
+name, content and metadata reuse the existing ingestion result rather than
+creating a second run. The lock is held through evaluation and history
+publication, so concurrent identical submissions are serialized.
+
+JSON writes use unique temporary files and atomic replacement. History writes
+are serialized and flushed. Failed intake publication removes its incomplete
+run directory. An evaluator failure is recorded as a failed evaluation and
+does not authorize training.
+
+These safeguards do not make the local API suitable for exposure to the public
+internet. Keep it bound to loopback, use the existing authentication system,
+and protect the host and its storage directory.
+
 ## Governance boundaries
 
 Ingestion is not source approval, record approval, legal clearance,
