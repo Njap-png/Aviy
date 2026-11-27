@@ -1,4 +1,4 @@
-﻿"""Conservative automated evaluation of locally supplied dataset JSONL files.
+"""Conservative automated evaluation of locally supplied dataset JSONL files.
 
 This evaluator produces corrected staging files only. It never approves a
 production source, authorizes tokenizer training, or authorizes pretraining.
@@ -11,10 +11,9 @@ import hashlib
 import json
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
-
 
 ALLOWED_LICENSES = {
     "CC0-1.0",
@@ -37,11 +36,11 @@ REQUIRED_METADATA = (
     "underlying_rights_status",
 )
 
-EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
+EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d\s().-]{7,}\d)(?!\w)")
 SECRET_RE = re.compile(
     r"(?:api[_-]?key|password|secret|access[_-]?token)\s*[:=]\s*\S+",
-    re.I,
+    re.IGNORECASE,
 )
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 
@@ -73,6 +72,8 @@ def uri_belongs_to_source(record_uri: object, source_uri: object) -> bool:
     """Compare URL origin and path boundaries rather than string prefixes."""
     if not valid_http_url(record_uri) or not valid_http_url(source_uri):
         return False
+    if not isinstance(record_uri, str) or not isinstance(source_uri, str):
+        return False
     try:
         record = urlsplit(record_uri.strip())
         source = urlsplit(source_uri.strip())
@@ -88,7 +89,7 @@ def uri_belongs_to_source(record_uri: object, source_uri: object) -> bool:
         if origin(record) != origin(source):
             return False
 
-        if re.search(r"%2f|%5c", source.path + record.path, re.I):
+        if re.search(r"%2f|%5c", source.path + record.path, re.IGNORECASE):
             return False
 
         base_path = unquote(source.path or "/")
@@ -340,7 +341,7 @@ def evaluate_records(
             if dataset_gate_passed
             else "HOLD_NOT_ACCEPTED"
         ),
-        "evaluated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "evaluated_at_utc": datetime.now(UTC).isoformat(),
         "input_records_sha256": sha256_file(records_path),
         "source_metadata_sha256": hashlib.sha256(
             json.dumps(metadata, ensure_ascii=False, sort_keys=True).encode("utf-8")

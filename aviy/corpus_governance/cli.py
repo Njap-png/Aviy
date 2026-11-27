@@ -3,7 +3,7 @@
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 
@@ -43,7 +43,7 @@ def _load_registry(root: Path, registry_path: Path) -> SourceRegistry:
     data = _read_json(_resolve(root, registry_path))
 
     if not isinstance(data, dict):
-        raise ValueError("Source registry must be a JSON object.")
+        raise TypeError("Source registry must be a JSON object.")
 
     try:
         return SourceRegistry.from_dict(data)
@@ -71,7 +71,7 @@ def _load_records(path: Path) -> list[CorpusRecord]:
                     ) from exc
 
                 if not isinstance(item, dict):
-                    raise ValueError(
+                    raise TypeError(
                         f"Line {line_number} must contain a JSON object."
                     )
 
@@ -84,7 +84,7 @@ def _load_records(path: Path) -> list[CorpusRecord]:
 
                 for field_name, value in vars(record).items():
                     if not isinstance(value, str):
-                        raise ValueError(
+                        raise TypeError(
                             f"Line {line_number}: '{field_name}' must be a string."
                         )
 
@@ -99,15 +99,15 @@ def _load_records(path: Path) -> list[CorpusRecord]:
 def _run_read(operation):
     try:
         operation()
-    except (OSError, ValueError, GovernanceError) as exc:
+    except (OSError, TypeError, ValueError, GovernanceError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
 
 @corpus_app.command("sources")
 def sources(
-    root: Path = typer.Option(DEFAULT_ROOT, "--root"),
-    registry: Path = typer.Option(DEFAULT_REGISTRY, "--registry"),
+    root: Annotated[Path, typer.Option("--root")] = DEFAULT_ROOT,
+    registry: Annotated[Path, typer.Option("--registry")] = DEFAULT_REGISTRY,
 ):
     """List registered sources and their training permissions."""
 
@@ -133,9 +133,9 @@ def sources(
 
 @corpus_app.command("validate")
 def validate(
-    records: Path = typer.Option(..., "--records"),
-    root: Path = typer.Option(DEFAULT_ROOT, "--root"),
-    registry: Path = typer.Option(DEFAULT_REGISTRY, "--registry"),
+    records: Annotated[Path, typer.Option("--records")],
+    root: Annotated[Path, typer.Option("--root")] = DEFAULT_ROOT,
+    registry: Annotated[Path, typer.Option("--registry")] = DEFAULT_REGISTRY,
 ):
     """Validate governance records without modifying them."""
 
@@ -170,9 +170,9 @@ def validate(
 
 @corpus_app.command("audit")
 def audit(
-    records: Path = typer.Option(..., "--records"),
-    root: Path = typer.Option(DEFAULT_ROOT, "--root"),
-    registry: Path = typer.Option(DEFAULT_REGISTRY, "--registry"),
+    records: Annotated[Path, typer.Option("--records")],
+    root: Annotated[Path, typer.Option("--root")] = DEFAULT_ROOT,
+    registry: Annotated[Path, typer.Option("--registry")] = DEFAULT_REGISTRY,
 ):
     """Summarize record governance states and validation failures."""
 
@@ -205,8 +205,8 @@ def audit(
 
 @corpus_app.command("manifest")
 def manifest(
-    manifest_path: Path = typer.Option(..., "--manifest"),
-    root: Path = typer.Option(DEFAULT_ROOT, "--root"),
+    manifest_path: Annotated[Path, typer.Option("--manifest")],
+    root: Annotated[Path, typer.Option("--root")] = DEFAULT_ROOT,
 ):
     """Inspect an existing manifest without modifying it."""
 
@@ -214,7 +214,7 @@ def manifest(
         data = _read_json(_resolve(root, manifest_path))
 
         if not isinstance(data, dict):
-            raise ValueError("Manifest must be a JSON object.")
+            raise TypeError("Manifest must be a JSON object.")
 
         fields = (
             "schema_version",
@@ -237,10 +237,10 @@ def manifest(
 
 @corpus_app.command("verify")
 def verify(
-    manifest_path: Path = typer.Option(..., "--manifest"),
-    records: Path = typer.Option(..., "--records"),
-    root: Path = typer.Option(DEFAULT_ROOT, "--root"),
-    registry: Path = typer.Option(DEFAULT_REGISTRY, "--registry"),
+    manifest_path: Annotated[Path, typer.Option("--manifest")],
+    records: Annotated[Path, typer.Option("--records")],
+    root: Annotated[Path, typer.Option("--root")] = DEFAULT_ROOT,
+    registry: Annotated[Path, typer.Option("--registry")] = DEFAULT_REGISTRY,
 ):
     """Verify an existing manifest against records and the source registry."""
 
@@ -249,7 +249,7 @@ def verify(
         supplied = _read_json(_resolve(root, manifest_path))
 
         if not isinstance(supplied, dict):
-            raise ValueError("Manifest must be a JSON object.")
+            raise TypeError("Manifest must be a JSON object.")
 
         loaded = _load_records(_resolve(root, records))
 
