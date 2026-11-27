@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import cast
@@ -620,4 +620,322 @@ def test_generation_rejects_prompt_ids_outside_allowed_vocabulary():
             torch.tensor([[1, 200]], dtype=torch.long),
             GenerationConfig(max_new_tokens=1),
             allowed_vocab_size=128,
+        )
+
+
+# Synthetic generation reliability regression tests.
+GENERATION_RELIABILITY_TEST_MARKER = "generation-reliability-v1"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"max_new_tokens": True},
+        {"max_new_tokens": -1},
+        {"temperature": float("nan")},
+        {"temperature": float("inf")},
+        {"temperature": 0.0},
+        {"top_k": True},
+        {"top_k": -1},
+        {"top_p": float("nan")},
+        {"top_p": float("inf")},
+        {"top_p": 0.0},
+        {"do_sample": 1},
+        {"eos_token_id": -1},
+        {"eos_token_id": True},
+        {"seed": True},
+        {"seed": -1},
+    ],
+)
+def test_generation_rejects_invalid_configuration_values(kwargs):
+    expected_exception = TypeError if "do_sample" in kwargs else ValueError
+    with pytest.raises(expected_exception):
+        GenerationConfig(**kwargs).validate()
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), float("-inf")])
+def test_generation_rejects_non_finite_model_logits(monkeypatch, bad_value):
+    model = make_model()
+
+    def invalid_forward(input_ids):
+        logits = torch.zeros((*input_ids.shape, 256))
+        logits[..., 7] = bad_value
+        return logits
+
+    monkeypatch.setattr(model, "forward", invalid_forward)
+
+    with pytest.raises(ValueError, match="non-finite"):
+        generate_tokens(
+            model,
+            torch.tensor([[1, 2]], dtype=torch.long),
+            GenerationConfig(max_new_tokens=1),
+        )
+
+
+def test_generation_rejects_malformed_model_logits(monkeypatch):
+    model = make_model()
+
+    def malformed_forward(input_ids):
+        return torch.zeros((1, 1, 256))
+
+    monkeypatch.setattr(model, "forward", malformed_forward)
+
+    with pytest.raises(ValueError, match="logits must have shape"):
+        generate_tokens(
+            model,
+            torch.tensor([[1, 2]], dtype=torch.long),
+            GenerationConfig(max_new_tokens=1),
+        )
+
+
+def test_generation_rejects_non_tensor_and_non_integer_prompts():
+    model = make_model()
+
+    with pytest.raises(TypeError, match="torch.Tensor"):
+        generate_tokens(
+            model,
+            cast(torch.Tensor, [[1, 2]]),
+            GenerationConfig(max_new_tokens=1),
+        )
+
+    with pytest.raises(TypeError, match="integer token IDs"):
+        generate_tokens(
+            model,
+            torch.tensor([[1.0, 2.0]]),
+            GenerationConfig(max_new_tokens=1),
+        )
+
+
+def test_generation_stops_immediately_on_eos_and_restores_training_mode(
+    monkeypatch,
+):
+    model = make_model()
+    model.train()
+
+    def eos_forward(input_ids):
+        logits = torch.zeros((*input_ids.shape, 256))
+        logits[..., 9] = 100.0
+        return logits
+
+    monkeypatch.setattr(model, "forward", eos_forward)
+
+    output = generate_tokens(
+        model,
+        torch.tensor([[1, 2]], dtype=torch.long),
+        GenerationConfig(max_new_tokens=10, eos_token_id=9),
+    )
+
+    assert output.tolist() == [[1, 2, 9]]
+    assert model.training is True
+
+
+def test_generation_preserves_evaluation_mode(monkeypatch):
+    model = make_model().eval()
+
+    def fixed_forward(input_ids):
+        logits = torch.zeros((*input_ids.shape, 256))
+        logits[..., 5] = 10.0
+        return logits
+
+    monkeypatch.setattr(model, "forward", fixed_forward)
+
+    output = generate_tokens(
+        model,
+        torch.tensor([[1, 2]], dtype=torch.long),
+        GenerationConfig(max_new_tokens=3),
+    )
+
+    assert output.shape == (1, 5)
+    assert model.training is False
+
+
+def test_generation_respects_context_window(monkeypatch):
+    model = make_model()
+    observed_lengths = []
+
+    def fixed_forward(input_ids):
+        observed_lengths.append(input_ids.shape[1])
+        return torch.zeros((*input_ids.shape, 256))
+
+    monkeypatch.setattr(model, "forward", fixed_forward)
+
+    prompt = torch.tensor([list(range(40))], dtype=torch.long)
+    generate_tokens(
+        model,
+        prompt,
+        GenerationConfig(max_new_tokens=2),
+    )
+
+    assert observed_lengths == [32, 32]
+
+
+def test_generation_top_k_sampling_stays_within_selected_candidates(
+    monkeypatch,
+):
+    model = make_model()
+
+    def controlled_forward(input_ids):
+        logits = torch.full((*input_ids.shape, 256), -100.0)
+        logits[..., 10] = 10.0
+        logits[..., 11] = 9.0
+        logits[..., 12] = 8.0
+        return logits
+
+    monkeypatch.setattr(model, "forward", controlled_forward)
+
+    output = generate_tokens(
+        model,
+        torch.tensor([[1, 2]], dtype=torch.long),
+        GenerationConfig(
+            max_new_tokens=32,
+            do_sample=True,
+            top_k=2,
+            seed=42,
+        ),
+    )
+
+    assert set(output[0, 2:].tolist()).issubset({10, 11})
+
+
+def test_generation_top_p_sampling_keeps_probability_mass_candidates(
+    monkeypatch,
+):
+    model = make_model()
+
+    def controlled_forward(input_ids):
+        logits = torch.full((*input_ids.shape, 256), -100.0)
+        logits[..., 10] = 10.0
+        logits[..., 11] = 9.0
+        logits[..., 12] = 0.0
+        return logits
+
+    monkeypatch.setattr(model, "forward", controlled_forward)
+
+    output = generate_tokens(
+        model,
+        torch.tensor([[1, 2]], dtype=torch.long),
+        GenerationConfig(
+            max_new_tokens=32,
+            do_sample=True,
+            top_p=0.5,
+            seed=42,
+        ),
+    )
+
+    assert set(output[0, 2:].tolist()).issubset({10, 11})
+
+
+def test_generation_zero_new_tokens_returns_prompt_unchanged():
+    model = make_model()
+    prompt = torch.tensor([[1, 2, 3]], dtype=torch.long)
+
+    output = generate_tokens(
+        model,
+        prompt,
+        GenerationConfig(max_new_tokens=0),
+        allowed_vocab_size=256,
+    )
+
+    assert torch.equal(output, prompt)
+
+
+# Synthetic cache and benchmark hardening regression tests.
+GENERATION_CACHE_BENCHMARK_MARKER = "generation-cache-benchmark-v1"
+
+
+@pytest.mark.parametrize("maximum_entries", [0, -1, True, 1.5])
+def test_generation_cache_rejects_invalid_capacity(maximum_entries):
+    with pytest.raises(ValueError, match="positive integer"):
+        GenerationCache(maximum_entries=maximum_entries)
+
+
+def test_generation_cache_validates_keys_and_values():
+    cache = GenerationCache()
+
+    with pytest.raises(TypeError, match="key must be a tuple"):
+        cache.put(["prompt"], (1, 2))
+
+    with pytest.raises(TypeError, match="hashable"):
+        cache.put(("prompt", []), (1, 2))
+
+    with pytest.raises(TypeError, match="value must be a tuple"):
+        cache.put(("prompt",), [1, 2])
+
+    with pytest.raises(ValueError, match="non-negative integer"):
+        cache.put(("prompt",), (1, -2))
+
+    with pytest.raises(ValueError, match="non-negative integer"):
+        cache.put(("prompt",), (True,))
+
+
+def test_generation_cache_isolates_keys_and_replaces_existing_values():
+    cache = GenerationCache(maximum_entries=2)
+
+    cache.put(("prompt-a", "greedy"), (1, 2))
+    cache.put(("prompt-a", "sampled"), (3, 4))
+    cache.put(("prompt-a", "greedy"), (5, 6))
+
+    assert cache.get(("prompt-a", "greedy")) == (5, 6)
+    assert cache.get(("prompt-a", "sampled")) == (3, 4)
+    assert len(cache) == 2
+
+
+def test_generation_cache_clear_removes_all_entries():
+    cache = GenerationCache(maximum_entries=3)
+    cache.put(("a",), (1,))
+    cache.put(("b",), (2,))
+
+    cache.clear()
+
+    assert len(cache) == 0
+    assert cache.get(("a",)) is None
+    assert cache.get(("b",)) is None
+
+
+def test_generation_cache_get_rejects_unhashable_key():
+    cache = GenerationCache()
+
+    with pytest.raises(TypeError, match="hashable"):
+        cache.get(("prompt", []))
+
+
+@pytest.mark.parametrize("repeats", [0, -1, True, 1.5])
+def test_generation_benchmark_rejects_invalid_repeat_counts(repeats):
+    model = make_model()
+
+    with pytest.raises(ValueError, match="repeats must be a positive integer"):
+        benchmark_generation(
+            model,
+            torch.tensor([[1, 2]], dtype=torch.long),
+            GenerationConfig(max_new_tokens=1),
+            repeats=repeats,
+        )
+
+
+def test_generation_benchmark_reports_consistent_repeat_metrics():
+    model = make_model()
+    prompt = torch.tensor([[1, 2]], dtype=torch.long)
+
+    report = benchmark_generation(
+        model,
+        prompt,
+        GenerationConfig(max_new_tokens=3, eos_token_id=None, seed=17),
+        repeats=3,
+    )
+
+    assert report["repeats"] == 3
+    assert report["generated_tokens"] == 3
+    assert report["mean_latency_seconds"] >= 0
+    assert report["tokens_per_second"] > 0
+
+
+def test_generation_benchmark_validates_generation_configuration():
+    model = make_model()
+
+    with pytest.raises(ValueError, match="temperature"):
+        benchmark_generation(
+            model,
+            torch.tensor([[1, 2]], dtype=torch.long),
+            GenerationConfig(temperature=float("nan")),
+            repeats=1,
         )
