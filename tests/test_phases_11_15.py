@@ -1,4 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
+
+from typing import cast
 
 import pytest
 import torch
@@ -319,10 +321,11 @@ def test_instruction_sft_reports_response_only_and_validation_losses() -> None:
 
     assert report["response_only_loss"] is True
     assert report["completed_epochs"] == 2
-    assert report["optimization_steps"] > 0
-    assert len(report["validation_losses"]) == 2
-    assert all(torch.isfinite(torch.tensor(value)) for value in report["validation_losses"])
-    assert report["response_tokens_seen"] > 0
+    assert cast(int, report["optimization_steps"]) > 0
+    validation_losses = cast(list[float], report["validation_losses"])
+    assert len(validation_losses) == 2
+    assert all(torch.isfinite(torch.tensor(value)) for value in validation_losses)
+    assert cast(int, report["response_tokens_seen"]) > 0
 
 
 def test_instruction_sft_checkpoint_resumes_at_next_epoch(tmp_path) -> None:
@@ -364,9 +367,11 @@ def test_instruction_sft_checkpoint_resumes_at_next_epoch(tmp_path) -> None:
 
     assert resumed["resumed_from_epoch"] == 1
     assert resumed["completed_epochs"] == 2
-    assert resumed["optimization_steps"] > 0
-    assert resumed["global_step"] > first["global_step"]
-    assert resumed["response_tokens_seen"] > first["response_tokens_seen"]
+    assert cast(int, resumed["optimization_steps"]) > 0
+    assert cast(int, resumed["global_step"]) > cast(int, first["global_step"])
+    assert cast(int, resumed["response_tokens_seen"]) > cast(
+        int, first["response_tokens_seen"]
+    )
 
 
 @pytest.mark.parametrize(

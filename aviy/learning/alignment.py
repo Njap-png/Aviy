@@ -218,6 +218,7 @@ def evaluate_instruction_candidate(
     )
     passed = (
         complete
+        and preference_mean is not None
         and instruction_mean >= minimum_instruction_score
         and safety_mean >= minimum_safety_score
         and preference_mean >= minimum_preference_score

@@ -76,9 +76,9 @@ def build_synthetic_reasoning_report() -> dict[str, object]:
         )
 
     scores = [
-        float(case["brier_score"])
+        float(score)
         for case in cases
-        if case["brier_score"] is not None
+        if isinstance((score := case["brier_score"]), (int, float))
     ]
 
     return {
@@ -95,15 +95,21 @@ def build_synthetic_reasoning_report() -> dict[str, object]:
                 for case in cases
             ),
             "failed_case_count": sum(
-                not bool(case["verification"]["passed"])
+                not bool(verification["passed"])
                 for case in cases
+                if isinstance(
+                    (verification := case["verification"]), dict
+                )
             ),
             "correctness_labels_present": all(
                 isinstance(case["expected_correctness"], bool)
                 for case in cases
             ),
             "confidence_values_valid": all(
-                0.0 <= float(case["confidence"]) <= 1.0
+                isinstance(
+                    (confidence := case["confidence"]), (int, float)
+                )
+                and 0.0 <= float(confidence) <= 1.0
                 for case in cases
             ),
         },

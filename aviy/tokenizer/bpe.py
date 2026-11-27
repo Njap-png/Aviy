@@ -7,7 +7,6 @@ import json
 import unicodedata
 from collections import Counter
 from collections.abc import Iterable
-from itertools import pairwise
 from pathlib import Path
 from typing import TypedDict
 
@@ -132,7 +131,7 @@ class ByteBPETokenizer:
         ] = {}
         pair_counts: Counter[tuple[int, int]] = Counter()
         candidates: list[
-            tuple[int, int, int, int, tuple[int, int]]
+            tuple[int, int, int, int, int, tuple[int, int]]
         ] = []
 
         def valid_occurrence(

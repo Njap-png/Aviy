@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from aviy.cognition.evaluation import (
@@ -10,6 +12,7 @@ from aviy.cognition.reasoning import (
     Planner,
     PlanStep,
     ReasoningResult,
+    StepVerifier,
     detect_reasoning_failure,
     evaluate_reasoning,
 )
@@ -47,12 +50,12 @@ def test_planner_rejects_invalid_plans(steps):
 
 def test_planner_rejects_invalid_step_types():
     with pytest.raises(TypeError, match="PlanStep"):
-        Planner().plan((object(),))
+        Planner().plan(cast(tuple[PlanStep, ...], (object(),)))
 
 
 def test_planner_rejects_invalid_dependency_container():
     with pytest.raises(TypeError, match="tuple"):
-        Planner().plan((PlanStep("a", "A", ["b"]), PlanStep("b", "B")))
+        Planner().plan((PlanStep("a", "A", cast(tuple[str, ...], ["b"])), PlanStep("b", "B")))
 
 
 def test_reasoning_verifies_steps_and_calculates_brier_score():
@@ -81,7 +84,7 @@ def test_reasoning_without_ground_truth_does_not_claim_calibration():
     result = evaluate_reasoning(
         (PlanStep("a", "Check"),),
         "Answer",
-        lambda _: True,
+        lambda step: True,
         confidence=0.7,
     )
 
@@ -95,7 +98,7 @@ def test_reasoning_rejects_invalid_confidence(confidence):
         evaluate_reasoning(
             (PlanStep("a", "Check"),),
             "Answer",
-            lambda _: True,
+            lambda step: True,
             confidence=confidence,
         )
 
@@ -103,12 +106,12 @@ def test_reasoning_rejects_invalid_confidence(confidence):
 def test_reasoning_rejects_invalid_answer_and_verifier():
     with pytest.raises(ValueError, match="answer"):
         evaluate_reasoning(
-            (PlanStep("a", "Check"),), "", lambda _: True, confidence=0.5
+            (PlanStep("a", "Check"),), "", lambda step: True, confidence=0.5
         )
 
     with pytest.raises(TypeError, match="callable"):
         evaluate_reasoning(
-            (PlanStep("a", "Check"),), "Answer", None, confidence=0.5
+            (PlanStep("a", "Check"),), "Answer", cast(StepVerifier, None), confidence=0.5
         )
 
 
@@ -118,7 +121,7 @@ def test_reasoning_verifier_must_return_actual_boolean(outcome):
         evaluate_reasoning(
             (PlanStep("a", "Check"),),
             "Answer",
-            lambda _: outcome,
+            lambda step: cast(bool, outcome),
             confidence=0.5,
         )
 
@@ -128,9 +131,9 @@ def test_reasoning_rejects_non_boolean_ground_truth():
         evaluate_reasoning(
             (PlanStep("a", "Check"),),
             "Answer",
-            lambda _: True,
+            lambda step: True,
             confidence=0.5,
-            expected_correctness=1,
+            expected_correctness=cast(bool, 1),
         )
 
 
@@ -152,14 +155,15 @@ def test_failure_detection_rejects_inconsistent_results():
 def test_synthetic_report_measures_correctness_and_uncertainty():
     report = build_synthetic_reasoning_report()
 
+    metrics = cast(dict[str, object], report["metrics"])
     assert report["evidence_class"] == "synthetic_engineering_fixture"
     assert report["model_capability_claim"] is False
-    assert report["metrics"]["case_count"] == 3
-    assert report["metrics"]["all_cases_have_verification"] is True
-    assert report["metrics"]["correctness_labels_present"] is True
-    assert report["metrics"]["confidence_values_valid"] is True
-    assert report["metrics"]["failed_case_count"] == 1
-    assert report["metrics"]["mean_brier_score"] == pytest.approx(0.2975)
+    assert metrics["case_count"] == 3
+    assert metrics["all_cases_have_verification"] is True
+    assert metrics["correctness_labels_present"] is True
+    assert metrics["confidence_values_valid"] is True
+    assert metrics["failed_case_count"] == 1
+    assert metrics["mean_brier_score"] == pytest.approx(0.2975)
 
 
 def test_synthetic_report_can_be_written_and_reloaded(tmp_path):

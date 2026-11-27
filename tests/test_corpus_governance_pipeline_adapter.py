@@ -1,6 +1,7 @@
 ﻿"""Tests for the strict dataset-pipeline governance adapter."""
 
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -92,9 +93,9 @@ def metadata_map(*record_ids):
     }
 
 
-def govern(records, **kwargs):
+def govern(records, **kwargs: Any):
     ids = [record.record_id for record in records]
-    split_options = {
+    split_options: dict[str, Any] = {
         "train_ratio": 1.0,
         "validation_ratio": 0.0,
         "test_ratio": 0.0,

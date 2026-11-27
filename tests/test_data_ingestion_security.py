@@ -1,6 +1,7 @@
 import base64
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -134,7 +135,7 @@ def test_rejects_non_bytes_and_oversized_payloads(tmp_path):
     with pytest.raises(ValueError):
         intake_bytes(
             "records.txt",
-            "not bytes",
+            cast(bytes, "not bytes"),
             METADATA,
             storage_root=tmp_path,
         )
