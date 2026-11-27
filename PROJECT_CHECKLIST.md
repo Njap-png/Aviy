@@ -103,7 +103,7 @@ verification and explicit authorization to change its checkbox.
 
 ## Phase 15 — Instruction tuning and alignment
 - [x] Prepare approved instruction datasets
-- [ ] Implement supervised fine-tuning
+- [x] Implement supervised fine-tuning
 - [ ] Evaluate preferences, safety and regressions
 
 **Acceptance criteria:** Candidate passes held-out instruction and safety evaluations.
