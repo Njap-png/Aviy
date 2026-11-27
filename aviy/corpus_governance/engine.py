@@ -136,7 +136,7 @@ class SourceRegistry:
         }
 
     @classmethod
-    def from_dict(cls, value: dict) -> "SourceRegistry":
+    def from_dict(cls, value: dict) -> SourceRegistry:
         if not isinstance(value, dict) or value.get("schema_version") != "1.0":
             raise GovernanceError("Unsupported source registry schema")
         entries = value.get("sources")
@@ -156,7 +156,7 @@ class SourceRegistry:
         temporary.replace(destination)
 
     @classmethod
-    def load(cls, path: str | Path) -> "SourceRegistry":
+    def load(cls, path: str | Path) -> SourceRegistry:
         value = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls.from_dict(value)
 
