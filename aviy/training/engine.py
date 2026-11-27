@@ -6,7 +6,7 @@ import json
 import math
 import random
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -126,6 +126,7 @@ def train_steps(
     scheduler_total_steps: int | None = None,
     scheduler_warmup_steps: int = 0,
     minimum_learning_rate_ratio: float = 0.0,
+    checkpoint_metadata: dict[str, Any] | None = None,
 ) -> dict[str, object]:
     if isinstance(steps, bool) or not isinstance(steps, int) or steps < 1:
         raise ValueError("steps must be a positive integer")
@@ -196,7 +197,10 @@ def train_steps(
         enabled=use_amp and amp_dtype == torch.float16,
     )
 
-    batch_cache = list(batches)
+    # Keep indexable sequences lazy; retain legacy support for one-shot iterables.
+    batch_cache: Sequence[tuple[torch.Tensor, torch.Tensor]] = (
+        batches if isinstance(batches, Sequence) else list(batches)
+    )
     if not batch_cache:
         raise ValueError("Training batches are empty")
     for index, batch in enumerate(batch_cache):
@@ -298,6 +302,7 @@ def train_steps(
             metadata={
                 "precision": precision,
                 "batch_position": next_batch_position,
+                "workflow": checkpoint_metadata or {},
             },
         )
 

@@ -15,6 +15,7 @@ from aviy.training.engine import (
 from aviy.training.experiments import ExperimentTracker
 from aviy.training.losses import causal_language_model_loss, l2_regularization
 from aviy.training.optimizers import build_optimizer, clip_gradients
+from aviy.training.pretraining import pretrain_base_model
 from aviy.training.schedules import warmup_cosine_scheduler
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "l2_regularization",
     "load_checkpoint",
     "load_verified_checkpoint",
+    "pretrain_base_model",
     "resource_report",
     "save_checkpoint",
     "train_steps",

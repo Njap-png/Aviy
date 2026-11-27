@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Literal
 
-TrainingStage = Literal["tokenizer_training", "supervised_finetuning"]
+TrainingStage = Literal["tokenizer_training", "supervised_finetuning", "base_pretraining"]
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ class TrainingAuthorization:
     evidence_reference: str
 
     def __post_init__(self) -> None:
-        if self.stage not in ("tokenizer_training", "supervised_finetuning"):
+        if self.stage not in ("tokenizer_training", "supervised_finetuning", "base_pretraining"):
             raise ValueError("Unsupported training authorization stage")
 
         if not re.fullmatch(r"[0-9a-f]{64}", self.dataset_fingerprint):
