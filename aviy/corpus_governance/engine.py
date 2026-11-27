@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
-import tempfile
 import unicodedata
-from dataclasses import asdict, dataclass, replace
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -18,7 +18,7 @@ class GovernanceError(ValueError):
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def normalize_text(text: str) -> str:
@@ -51,6 +51,50 @@ def privacy_issues(text: str) -> tuple[str, ...]:
     )
 
 
+REQUIRED_RIGHTS_EVIDENCE_GATES = (
+    "database_license_scope",
+    "underlying_content_rights",
+    "collection_terms_ai_ml",
+    "attribution_obligations",
+    "privacy_personal_data",
+    "removal_opt_out",
+    "provenance_reproducibility",
+    "jurisdiction_legal_signoff",
+)
+
+
+def _has_timezone_aware_timestamp(value: object) -> bool:
+    """Return whether value is a timezone-aware ISO-8601 timestamp."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        timestamp = datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return timestamp.tzinfo is not None and timestamp.utcoffset() is not None
+
+
+def _has_complete_rights_evidence(evidence: object) -> bool:
+    """Require traceable, independently reviewed evidence for every rights gate."""
+    if not isinstance(evidence, dict):
+        return False
+
+    for gate in REQUIRED_RIGHTS_EVIDENCE_GATES:
+        item = evidence.get(gate)
+        if not isinstance(item, dict) or item.get("status") != "verified":
+            return False
+
+        for name in ("evidence_reference", "reviewer", "reviewed_at"):
+            value = item.get(name)
+            if not isinstance(value, str) or not value.strip():
+                return False
+
+        if not _has_timezone_aware_timestamp(item["reviewed_at"]):
+            return False
+
+    return True
+
+
 @dataclass(frozen=True)
 class SourceRegistration:
     source_id: str
@@ -65,6 +109,7 @@ class SourceRegistration:
     attribution_text: str = ""
     reviewer: str = ""
     approved_at: str = ""
+    rights_evidence: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -90,6 +135,9 @@ class CorpusRecord:
     reviewer: str = ""
     reviewed_at: str = ""
     review_notes: str = ""
+    privacy_reviewer: str = ""
+    privacy_reviewed_at: str = ""
+    privacy_review_notes: str = ""
 
 
 class SourceRegistry:
@@ -109,12 +157,15 @@ class SourceRegistry:
             raise GovernanceError("Invalid source approval_status")
         if source.license_status not in {"pending", "approved", "rejected"}:
             raise GovernanceError("Invalid source license_status")
+        if not isinstance(source.rights_evidence, dict):
+            raise GovernanceError("rights_evidence must be a mapping")
         if source.source_id in self._sources:
             raise GovernanceError("Duplicate source_id")
-        self._sources[source.source_id] = source
+        self._sources[source.source_id] = copy.deepcopy(source)
 
     def get(self, source_id: str):
-        return self._sources.get(source_id)
+        source = self._sources.get(source_id)
+        return copy.deepcopy(source) if source is not None else None
 
     def is_training_approved(self, source_id: str) -> bool:
         source = self.get(source_id)
@@ -125,6 +176,7 @@ class SourceRegistry:
             and source.training_allowed is True
             and source.reviewer.strip()
             and source.approved_at.strip()
+            and _has_complete_rights_evidence(source.rights_evidence)
         )
 
     def to_dict(self) -> dict:
@@ -297,12 +349,55 @@ def approve_record(
     return replace(
         record,
         review_status="reviewed",
-        privacy_status="clear",
         approval_status="approved",
         reviewer=reviewer.strip(),
         reviewed_at=utc_now(),
         review_notes=review_notes,
     )
+
+
+def approve_privacy_review(
+    record: CorpusRecord,
+    *,
+    reviewer: str,
+    human_reviewed: bool,
+    clear: bool,
+    review_notes: str = "",
+) -> CorpusRecord:
+    """Record a distinct human decision about privacy clearance."""
+    if not isinstance(record, CorpusRecord):
+        raise TypeError("record must be CorpusRecord")
+    if human_reviewed is not True:
+        raise GovernanceError("Explicit human privacy review is required")
+    if not isinstance(reviewer, str) or not reviewer.strip():
+        raise GovernanceError("A privacy reviewer identity is required")
+    if (
+        reviewer.strip().casefold()
+        == record.reviewer.strip().casefold()
+    ):
+        raise GovernanceError(
+            "Privacy reviewer must be independent from the content reviewer"
+        )
+    if not isinstance(clear, bool):
+        raise GovernanceError("Privacy decision must be explicitly clear or flagged")
+    if record.approval_status != "approved" or record.review_status != "reviewed":
+        raise GovernanceError(
+            "Content approval must be completed before privacy review"
+        )
+    if not isinstance(review_notes, str):
+        raise GovernanceError("Privacy review notes must be a string")
+    if not clear and not review_notes.strip():
+        raise GovernanceError("A reason is required when privacy is flagged")
+    if clear and privacy_issues(record.text):
+        raise GovernanceError("Privacy screening flags prevent privacy clearance")
+    return replace(
+        record,
+        privacy_status="clear" if clear else "flagged",
+        privacy_reviewer=reviewer.strip(),
+        privacy_reviewed_at=utc_now(),
+        privacy_review_notes=review_notes.strip(),
+    )
+
 
 
 def quarantine_record(
@@ -328,7 +423,7 @@ def quarantine_record(
 
 def _split_for(group_id: str, seed: int, ratios: tuple[float, float, float]) -> str:
     digest = hashlib.sha256(
-        f"{seed}:{group_id}".encode("utf-8")
+        f"{seed}:{group_id}".encode()
     ).hexdigest()
     fraction = int(digest, 16) / (1 << 256)
     train, validation, _test = ratios
@@ -372,6 +467,22 @@ def build_manifest(
     group_splits = {}
 
     for record in items:
+        if (
+            record.privacy_status != "clear"
+            or not record.privacy_reviewer.strip()
+            or not _has_timezone_aware_timestamp(record.privacy_reviewed_at)
+        ):
+            raise GovernanceError(
+                "Manifest blocked: independent privacy-review evidence missing"
+            )
+        if (
+            record.privacy_reviewer.strip().casefold()
+            == record.reviewer.strip().casefold()
+        ):
+            raise GovernanceError(
+                "Manifest blocked: privacy reviewer must be independent "
+                "from the content reviewer"
+            )
         if record.record_id in ids:
             raise GovernanceError("Duplicate record_id")
         ids.add(record.record_id)
@@ -427,14 +538,18 @@ def build_manifest(
         "record_count": len(entries),
         "split_counts": counts,
         "records": entries,
-        "training_authorized": True,
+        "training_authorized": False,
         "test_split_training_allowed": False,
         "test_split_model_selection_allowed": False,
     }
 
 
 def training_records(manifest: dict, records):
-    """Return only verified training records; never validation or test data."""
+    """Return verified train-split candidates, not training authorization.
+
+    Selecting records for the train partition does not authorize tokenizer
+    training, pretraining, or execution of any training job.
+    """
     if not isinstance(manifest, dict) or manifest.get("schema_version") != "1.0":
         raise GovernanceError("Invalid manifest")
     if manifest.get("test_split_training_allowed") is not False:

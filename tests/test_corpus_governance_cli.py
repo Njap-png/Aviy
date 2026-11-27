@@ -39,6 +39,7 @@ def approved_fixture():
         attribution_required=False,
         reviewer="test-reviewer",
         approved_at="2026-01-01T00:00:00Z",
+        rights_evidence=synthetic_rights_evidence(),
     ))
 
     records = []
@@ -66,6 +67,9 @@ def approved_fixture():
             reviewer="test-reviewer",
             reviewed_at="2026-01-01T00:00:00Z",
             review_notes="Reviewed test fixture.",
+            privacy_reviewer="privacy-test-reviewer",
+            privacy_reviewed_at="2026-01-02T00:00:00Z",
+            privacy_review_notes="Synthetic privacy review fixture.",
         ))
     return registry, records
 
@@ -217,3 +221,26 @@ def test_existing_commands_remain_registered():
     assert result.exit_code == 0
     for command in ("version", "validate", "serve", "corpus"):
         assert command in result.output
+
+
+def synthetic_rights_evidence() -> dict[str, dict[str, str]]:
+    """Test-only evidence; it does not represent real source approval."""
+    gates = (
+        "database_license_scope",
+        "underlying_content_rights",
+        "collection_terms_ai_ml",
+        "attribution_obligations",
+        "privacy_personal_data",
+        "removal_opt_out",
+        "provenance_reproducibility",
+        "jurisdiction_legal_signoff",
+    )
+    return {
+        gate: {
+            "status": "verified",
+            "evidence_reference": f"test://synthetic-rights/{gate}",
+            "reviewer": "synthetic-test-reviewer",
+            "reviewed_at": "2026-11-27T00:00:00+00:00",
+        }
+        for gate in gates
+    }

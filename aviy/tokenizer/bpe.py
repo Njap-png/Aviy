@@ -281,8 +281,14 @@ class ByteBPETokenizer:
         *,
         vocabulary_size: int = 16384,
         minimum_pair_frequency: int = 2,
+        authorization: object | None = None,
     ) -> ByteBPETokenizer:
-        """Train only from the training split of a passing dataset audit."""
+        """Train from a passing dataset only with matching explicit authorization."""
+        from aviy.training.authorization import (
+            fingerprint_prepared_dataset,
+            require_training_authorization,
+        )
+
         if not dataset.audit.passed:
             raise ValueError("Tokenizer training requires a passing dataset audit")
         training_texts = [
@@ -290,6 +296,11 @@ class ByteBPETokenizer:
         ]
         if not training_texts:
             raise ValueError("The audited dataset has no training-split records")
+        require_training_authorization(
+            authorization,
+            expected_stage="tokenizer_training",
+            expected_fingerprint=fingerprint_prepared_dataset(dataset),
+        )
         return cls.train(
             training_texts,
             vocabulary_size=vocabulary_size,

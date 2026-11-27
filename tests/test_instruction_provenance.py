@@ -48,8 +48,8 @@ def test_instruction_preparation_preserves_extended_provenance():
         "source_retrieved",
         "unicode_nfc_whitespace_normalization",
     )
-    assert result.privacy_screening == "passed"
-    assert result.duplicate_screening == "passed"
+    assert result.privacy_screening == "automated_checks_passed"
+    assert result.duplicate_screening == "automated_checks_passed"
 
     assert prepared.split(result.split) == (result,)
 

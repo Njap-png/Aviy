@@ -1,4 +1,4 @@
-﻿"""Tests for the strict dataset-pipeline governance adapter."""
+"""Tests for the strict dataset-pipeline governance adapter."""
 
 from dataclasses import replace
 from typing import Any
@@ -12,6 +12,7 @@ from aviy.corpus_governance.engine import (
 )
 from aviy.corpus_governance.pipeline_adapter import (
     HumanReviewDecision,
+    PrivacyReviewDecision,
     RecordGovernanceMetadata,
     govern_prepared_dataset,
 )
@@ -35,6 +36,7 @@ def approved_registry():
             attribution_text="Source: Approved Example Dataset",
             reviewer="source-reviewer",
             approved_at="2026-11-26T08:00:00Z",
+            rights_evidence=synthetic_rights_evidence(),
         )
     ])
 
@@ -82,6 +84,18 @@ def review_map(*record_ids):
     }
 
 
+def privacy_review_map(*record_ids):
+    return {
+        record_id: PrivacyReviewDecision(
+            reviewer="privacy-reviewer",
+            human_reviewed=True,
+            clear=True,
+            review_notes="Synthetic independent privacy review.",
+        )
+        for record_id in record_ids
+    }
+
+
 def metadata_map(*record_ids):
     return {
         record_id: RecordGovernanceMetadata(
@@ -106,6 +120,7 @@ def govern(records, **kwargs: Any):
         approved_registry(),
         reviews=review_map(*ids),
         metadata=metadata_map(*ids),
+        privacy_reviews=privacy_review_map(*ids),
         **split_options,
     )
 
@@ -114,7 +129,7 @@ def test_explicitly_reviewed_record_enters_governance_manifest():
     result = govern([pipeline_record()])
 
     assert result.manifest["record_count"] == 1
-    assert result.manifest["training_authorized"] is True
+    assert result.manifest["training_authorized"] is False
     assert result.records[0].approval_status == "approved"
     assert result.records[0].review_status == "reviewed"
     assert len(result.training_records) == 1
@@ -128,6 +143,20 @@ def test_legacy_approval_flag_does_not_replace_human_review():
             approved_registry(),
             reviews={},
             metadata=metadata_map(record.record_id),
+        )
+
+
+def test_missing_independent_privacy_review_blocks_governance():
+    record = pipeline_record()
+    with pytest.raises(
+        GovernanceError, match="Independent privacy review decision missing"
+    ):
+        govern_prepared_dataset(
+            prepared_dataset(record),
+            approved_registry(),
+            reviews=review_map(record.record_id),
+            metadata=metadata_map(record.record_id),
+            privacy_reviews={},
         )
 
 
@@ -257,6 +286,7 @@ def test_related_records_share_a_split():
         approved_registry(),
         reviews=reviews,
         metadata=metadata,
+        privacy_reviews=privacy_review_map(*reviews),
         train_ratio=0.5,
         validation_ratio=0.5,
         test_ratio=0.0,
@@ -278,8 +308,32 @@ def test_duplicate_content_is_blocked_by_manifest():
             approved_registry(),
             reviews=reviews,
             metadata=metadata,
+            privacy_reviews=privacy_review_map(*reviews),
             train_ratio=1.0,
             validation_ratio=0.0,
             test_ratio=0.0,
         )
+
+
+def synthetic_rights_evidence() -> dict[str, dict[str, str]]:
+    """Test-only evidence; it does not represent real source approval."""
+    gates = (
+        "database_license_scope",
+        "underlying_content_rights",
+        "collection_terms_ai_ml",
+        "attribution_obligations",
+        "privacy_personal_data",
+        "removal_opt_out",
+        "provenance_reproducibility",
+        "jurisdiction_legal_signoff",
+    )
+    return {
+        gate: {
+            "status": "verified",
+            "evidence_reference": f"test://synthetic-rights/{gate}",
+            "reviewer": "synthetic-test-reviewer",
+            "reviewed_at": "2026-11-27T00:00:00+00:00",
+        }
+        for gate in gates
+    }
 

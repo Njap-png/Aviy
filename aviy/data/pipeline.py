@@ -36,6 +36,18 @@ class DatasetRecord:
     record_id: str = ""
     split: str = ""
 
+    # Extended provenance fields. Defaults preserve older callers and JSONL files.
+    dataset_revision: str = ""
+    license_uri: str = ""
+    language: str = ""
+    language_script: str = ""
+    retrieved_at: str = ""
+    training_stage: str = ""
+    content_category: str = ""
+    processing_history: tuple[str, ...] = ()
+    privacy_screening: str = ""
+    duplicate_screening: str = ""
+
 
 @dataclass(frozen=True)
 class DatasetAudit:
@@ -124,6 +136,17 @@ def _record_from_mapping(item: dict[str, object]) -> DatasetRecord:
     source_uri = item.get("source_uri", "")
     record_id = item.get("record_id", "")
 
+    dataset_revision = item.get("dataset_revision", "")
+    license_uri = item.get("license_uri", "")
+    language = item.get("language", "")
+    language_script = item.get("language_script", "")
+    retrieved_at = item.get("retrieved_at", "")
+    training_stage = item.get("training_stage", "")
+    content_category = item.get("content_category", "")
+    processing_history = item.get("processing_history", ())
+    privacy_screening = item.get("privacy_screening", "")
+    duplicate_screening = item.get("duplicate_screening", "")
+
     if not isinstance(text, str):
         raise TypeError("text must be a string")
     if not isinstance(source_id, str):
@@ -132,8 +155,30 @@ def _record_from_mapping(item: dict[str, object]) -> DatasetRecord:
         raise TypeError("license must be a string")
     if not isinstance(approved, bool):
         raise TypeError("approved_for_training must be a boolean")
-    if not isinstance(source_uri, str) or not isinstance(record_id, str):
-        raise TypeError("source_uri and record_id must be strings")
+    def require_string(value: object, field_name: str) -> str:
+        if not isinstance(value, str):
+            raise TypeError(f"{field_name} must be a string")
+        return value
+
+    source_uri = require_string(source_uri, "source_uri")
+    record_id = require_string(record_id, "record_id")
+    dataset_revision = require_string(dataset_revision, "dataset_revision")
+    license_uri = require_string(license_uri, "license_uri")
+    language = require_string(language, "language")
+    language_script = require_string(language_script, "language_script")
+    retrieved_at = require_string(retrieved_at, "retrieved_at")
+    training_stage = require_string(training_stage, "training_stage")
+    content_category = require_string(content_category, "content_category")
+    privacy_screening = require_string(privacy_screening, "privacy_screening")
+    duplicate_screening = require_string(duplicate_screening, "duplicate_screening")
+
+    if isinstance(processing_history, list):
+        processing_history = tuple(processing_history)
+    if (
+        not isinstance(processing_history, tuple)
+        or any(not isinstance(entry, str) for entry in processing_history)
+    ):
+        raise TypeError("processing_history must contain only strings")
 
     return DatasetRecord(
         text=text,
@@ -142,6 +187,16 @@ def _record_from_mapping(item: dict[str, object]) -> DatasetRecord:
         approved_for_training=approved,
         source_uri=source_uri,
         record_id=record_id,
+        dataset_revision=dataset_revision,
+        license_uri=license_uri,
+        language=language,
+        language_script=language_script,
+        retrieved_at=retrieved_at,
+        training_stage=training_stage,
+        content_category=content_category,
+        processing_history=processing_history,
+        privacy_screening=privacy_screening,
+        duplicate_screening=duplicate_screening,
     )
 
 
@@ -241,6 +296,31 @@ def prepare_dataset(
                 raise TypeError("source_uri must be a string")
             if not isinstance(record.record_id, str):
                 raise TypeError("record_id must be a string")
+
+            extended_string_fields = (
+                "dataset_revision",
+                "license_uri",
+                "language",
+                "language_script",
+                "retrieved_at",
+                "training_stage",
+                "content_category",
+                "privacy_screening",
+                "duplicate_screening",
+            )
+            for field_name in extended_string_fields:
+                if not isinstance(getattr(record, field_name), str):
+                    raise TypeError(f"{field_name} must be a string")
+
+            if (
+                not isinstance(record.processing_history, tuple)
+                or any(
+                    not isinstance(entry, str)
+                    for entry in record.processing_history
+                )
+            ):
+                raise TypeError("processing_history must be a tuple of strings")
+
             if not isinstance(record.approved_for_training, bool):
                 raise TypeError("approved_for_training must be a boolean")
             text = normalize_text(record.text)
@@ -259,6 +339,10 @@ def prepare_dataset(
             continue
         if record.license.strip().lower() not in approved:
             licenses_approved = False
+            rejected += 1
+            continue
+        if record.license_uri and not _valid_source_uri(record.license_uri):
+            provenance_complete = False
             rejected += 1
             continue
         if record.approved_for_training is not True:
@@ -289,6 +373,23 @@ def prepare_dataset(
                 approved_for_training=True,
                 source_uri=record.source_uri.strip(),
                 record_id=record.record_id.strip() or fingerprint,
+                dataset_revision=record.dataset_revision.strip(),
+                license_uri=record.license_uri.strip(),
+                language=record.language.strip(),
+                language_script=record.language_script.strip(),
+                retrieved_at=record.retrieved_at.strip(),
+                training_stage=record.training_stage.strip(),
+                content_category=record.content_category.strip(),
+                processing_history=(
+                    record.processing_history
+                    + (
+                        ("unicode_nfc_whitespace_normalization",)
+                        if text != record.text
+                        else ()
+                    )
+                ),
+                privacy_screening="automated_checks_passed",
+                duplicate_screening="automated_checks_passed",
             )
         )
 

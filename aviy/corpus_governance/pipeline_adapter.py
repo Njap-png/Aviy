@@ -1,20 +1,21 @@
-﻿"""Strict adapter between Aviy's dataset pipeline and corpus governance."""
+"""Strict adapter between Aviy's dataset pipeline and corpus governance."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
-from aviy.data.pipeline import PreparedDataset
 from aviy.corpus_governance.engine import (
     CorpusRecord,
     GovernanceError,
     SourceRegistry,
+    approve_privacy_review,
     approve_record,
     build_manifest,
     create_record,
     training_records,
 )
+from aviy.data.pipeline import PreparedDataset
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,16 @@ class HumanReviewDecision:
 
     reviewer: str
     human_reviewed: bool
+    review_notes: str = ""
+
+
+@dataclass(frozen=True)
+class PrivacyReviewDecision:
+    """Independent per-record human privacy-review evidence."""
+
+    reviewer: str
+    human_reviewed: bool
+    clear: bool
     review_notes: str = ""
 
 
@@ -50,6 +61,7 @@ def govern_prepared_dataset(
     *,
     reviews: Mapping[str, HumanReviewDecision],
     metadata: Mapping[str, RecordGovernanceMetadata],
+    privacy_reviews: Mapping[str, PrivacyReviewDecision] | None = None,
     seed: int = 42,
     train_ratio: float = 0.90,
     validation_ratio: float = 0.05,
@@ -74,6 +86,8 @@ def govern_prepared_dataset(
         raise TypeError("reviews must be a mapping")
     if not isinstance(metadata, Mapping):
         raise TypeError("metadata must be a mapping")
+    if privacy_reviews is not None and not isinstance(privacy_reviews, Mapping):
+        raise TypeError("privacy_reviews must be a mapping")
 
     seen_ids: set[str] = set()
     approved_records: list[CorpusRecord] = []
@@ -155,15 +169,30 @@ def govern_prepared_dataset(
             authored_at=details.authored_at,
         )
 
-        approved_records.append(
-            approve_record(
-                corpus_record,
-                registry,
-                reviewer=review.reviewer,
-                human_reviewed=review.human_reviewed,
-                review_notes=review.review_notes,
-            )
+        content_approved = approve_record(
+            corpus_record,
+            registry,
+            reviewer=review.reviewer,
+            human_reviewed=review.human_reviewed,
+            review_notes=review.review_notes,
         )
+        privacy_decision = (
+            privacy_reviews.get(record_id)
+            if privacy_reviews is not None
+            else None
+        )
+        if not isinstance(privacy_decision, PrivacyReviewDecision):
+            raise GovernanceError(
+                f"Independent privacy review decision missing for record {record_id}"
+            )
+        privacy_approved = approve_privacy_review(
+            content_approved,
+            reviewer=privacy_decision.reviewer,
+            human_reviewed=privacy_decision.human_reviewed,
+            clear=privacy_decision.clear,
+            review_notes=privacy_decision.review_notes,
+        )
+        approved_records.append(privacy_approved)
 
     manifest = build_manifest(
         approved_records,

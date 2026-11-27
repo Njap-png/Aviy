@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import cast
 
 import pytest
@@ -37,6 +38,10 @@ from aviy.memory.store import MemoryStore
 from aviy.models.base_model import AviyBaseLM, BaseModelConfig
 from aviy.tokenizer.bpe import ByteBPETokenizer
 from aviy.training import checkpoints as checkpoint_module
+from aviy.training.authorization import (
+    TrainingAuthorization,
+    fingerprint_prepared_dataset,
+)
 
 
 def make_suite() -> BenchmarkSuite:
@@ -242,12 +247,57 @@ def make_instruction_dataset():
     return prepare_instruction_dataset(records, allowed_licenses=["CC-BY-4.0"], seed=42)
 
 
+def sft_test_authorization(dataset) -> TrainingAuthorization:
+    return TrainingAuthorization(
+        stage="supervised_finetuning",
+        dataset_fingerprint=fingerprint_prepared_dataset(dataset),
+        approver="synthetic-test",
+        authorized_at=datetime.now(UTC).isoformat(),
+        evidence_reference="test://synthetic-sft-fixture",
+    )
+
+
 def test_instruction_preparation_uses_approved_governed_data() -> None:
     dataset = make_instruction_dataset()
     assert dataset.audit.passed
     assert dataset.split("train")
     assert dataset.split("validation")
     assert dataset.split("test")
+
+
+@pytest.mark.parametrize("authorization_kind", ["missing", "wrong_stage", "stale_dataset"])
+def test_instruction_sft_rejects_missing_or_mismatched_authorization(
+    authorization_kind: str,
+) -> None:
+    dataset = make_instruction_dataset()
+    valid = sft_test_authorization(dataset)
+
+    if authorization_kind == "missing":
+        authorization = None
+    elif authorization_kind == "wrong_stage":
+        authorization = TrainingAuthorization(
+            stage="tokenizer_training",
+            dataset_fingerprint=valid.dataset_fingerprint,
+            approver="synthetic-test",
+            authorized_at=datetime.now(UTC).isoformat(),
+            evidence_reference="test://wrong-stage",
+        )
+    else:
+        authorization = TrainingAuthorization(
+            stage="supervised_finetuning",
+            dataset_fingerprint="0" * 64,
+            approver="synthetic-test",
+            authorized_at=datetime.now(UTC).isoformat(),
+            evidence_reference="test://stale-dataset",
+        )
+
+    with pytest.raises(PermissionError):
+        train_supervised_finetuning(
+            make_model(),
+            ByteBPETokenizer(),
+            dataset,
+            authorization=authorization,
+        )
 
 
 def test_instruction_sft_updates_model_using_training_split_only() -> None:
@@ -264,6 +314,8 @@ def test_instruction_sft_updates_model_using_training_split_only() -> None:
         dataset,
         epochs=1,
         maximum_length=32,
+
+        authorization=sft_test_authorization(dataset),
     )
     optimization_steps = report["optimization_steps"]
     assert isinstance(optimization_steps, int)
@@ -317,6 +369,8 @@ def test_instruction_sft_reports_response_only_and_validation_losses() -> None:
         maximum_length=32,
         batch_size=4,
         seed=42,
+
+        authorization=sft_test_authorization(dataset),
     )
 
     assert report["response_only_loss"] is True
@@ -346,6 +400,8 @@ def test_instruction_sft_checkpoint_resumes_at_next_epoch(tmp_path) -> None:
         batch_size=4,
         seed=42,
         checkpoint_path=checkpoint,
+
+        authorization=sft_test_authorization(dataset),
     )
 
     assert first["completed_epochs"] == 1
@@ -363,6 +419,8 @@ def test_instruction_sft_checkpoint_resumes_at_next_epoch(tmp_path) -> None:
         seed=42,
         checkpoint_path=checkpoint,
         resume_from_checkpoint=checkpoint,
+
+        authorization=sft_test_authorization(dataset),
     )
 
     assert resumed["resumed_from_epoch"] == 1
@@ -402,6 +460,8 @@ def test_instruction_sft_rejects_corrupt_resume_metadata_before_restore(
         batch_size=4,
         seed=42,
         checkpoint_path=checkpoint,
+
+        authorization=sft_test_authorization(dataset),
     )
 
     payload = checkpoint_module.load_verified_checkpoint(
@@ -442,6 +502,8 @@ def test_instruction_sft_rejects_corrupt_resume_metadata_before_restore(
             seed=42,
             checkpoint_path=checkpoint,
             resume_from_checkpoint=checkpoint,
+
+            authorization=sft_test_authorization(dataset),
         )
 
 
@@ -462,6 +524,8 @@ def test_instruction_sft_rejects_incompatible_resume_settings(tmp_path) -> None:
         batch_size=4,
         seed=42,
         checkpoint_path=checkpoint,
+
+        authorization=sft_test_authorization(dataset),
     )
 
     with pytest.raises(ValueError, match="incompatible"):
@@ -475,6 +539,8 @@ def test_instruction_sft_rejects_incompatible_resume_settings(tmp_path) -> None:
             seed=42,
             checkpoint_path=checkpoint,
             resume_from_checkpoint=checkpoint,
+
+            authorization=sft_test_authorization(dataset),
         )
 
 

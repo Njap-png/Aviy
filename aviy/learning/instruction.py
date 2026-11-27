@@ -7,7 +7,7 @@ import json
 import math
 import random
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 import torch
@@ -23,6 +23,11 @@ from aviy.data.pipeline import (
 from aviy.math.reproducibility import set_seed
 from aviy.models.base_model import validate_tokenizer_compatibility
 from aviy.tokenizer.bpe import ByteBPETokenizer
+from aviy.training.authorization import (
+    TrainingAuthorization,
+    fingerprint_prepared_dataset,
+    require_training_authorization,
+)
 from aviy.training.engine import load_checkpoint, save_checkpoint
 from aviy.training.losses import causal_language_model_loss
 
@@ -246,9 +251,8 @@ def _fingerprint(value: object) -> str:
 
 
 def _dataset_fingerprint(dataset: PreparedInstructionDataset) -> str:
-    # Include every record field so provenance changes invalidate old checkpoints.
-    records = [asdict(record) for record in dataset.records]
-    return _fingerprint(records)
+    # Share the canonical fingerprint used by tokenizer authorization.
+    return fingerprint_prepared_dataset(dataset)
 
 
 def _tokenizer_fingerprint(tokenizer: ByteBPETokenizer) -> str:
@@ -327,8 +331,9 @@ def train_supervised_finetuning(
     seed: int = 42,
     checkpoint_path: str | Path | None = None,
     resume_from_checkpoint: str | Path | None = None,
+    authorization: TrainingAuthorization | None = None,
 ) -> dict[str, object]:
-    """Train on approved training data with response-only loss and validation."""
+    """Train with response-only loss after explicit dataset-bound authorization."""
     _validate_training_integer("epochs", epochs, 1)
     _validate_training_integer("maximum_length", maximum_length, 2)
     _validate_training_integer("batch_size", batch_size, 1)
@@ -343,6 +348,11 @@ def train_supervised_finetuning(
         raise ValueError("learning_rate must be finite and positive")
     if not dataset.audit.passed:
         raise ValueError("Instruction dataset audit did not pass")
+    require_training_authorization(
+        authorization,
+        expected_stage="supervised_finetuning",
+        expected_fingerprint=_dataset_fingerprint(dataset),
+    )
     if resume_from_checkpoint is not None and checkpoint_path is None:
         raise ValueError("checkpoint_path is required when resuming training")
 

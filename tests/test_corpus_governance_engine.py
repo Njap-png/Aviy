@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from aviy.corpus_governance import (
@@ -15,6 +16,7 @@ from aviy.corpus_governance import (
     training_records,
     validate_record,
 )
+from aviy.corpus_governance.engine import approve_privacy_review
 
 
 class CorpusGovernanceEngineTests(unittest.TestCase):
@@ -32,6 +34,7 @@ class CorpusGovernanceEngineTests(unittest.TestCase):
                 attribution_required=False,
                 reviewer="governance-reviewer",
                 approved_at="2026-11-26T00:00:00+00:00",
+                rights_evidence=synthetic_rights_evidence(),
             )
         ])
 
@@ -55,10 +58,17 @@ class CorpusGovernanceEngineTests(unittest.TestCase):
         return create_record(**values)
 
     def approved(self, record):
-        return approve_record(
+        content_approved = approve_record(
             record, self.registry,
             reviewer="human-reviewer",
             human_reviewed=True,
+        )
+        return approve_privacy_review(
+            content_approved,
+            reviewer="privacy-reviewer",
+            human_reviewed=True,
+            clear=True,
+            review_notes="Synthetic privacy review fixture.",
         )
 
     def test_valid_record_requires_human_approval(self):
@@ -68,6 +78,94 @@ class CorpusGovernanceEngineTests(unittest.TestCase):
         self.assertEqual(approved.approval_status, "approved")
         self.assertEqual(approved.review_status, "reviewed")
         self.assertEqual(approved.privacy_status, "clear")
+
+
+    def test_content_approval_alone_does_not_clear_privacy(self):
+        content_approved = approve_record(
+            self.record(),
+            self.registry,
+            reviewer="content-reviewer",
+            human_reviewed=True,
+        )
+        self.assertEqual(content_approved.approval_status, "approved")
+        self.assertEqual(content_approved.review_status, "reviewed")
+        self.assertEqual(content_approved.privacy_status, "pending")
+        self.assertEqual(content_approved.privacy_reviewer, "")
+        with self.assertRaisesRegex(
+            GovernanceError, "independent privacy-review evidence missing"
+        ):
+            build_manifest([content_approved], self.registry)
+
+    def test_manifest_rejects_same_content_and_privacy_reviewer(self):
+        content_approved = approve_record(
+            self.record(),
+            self.registry,
+            reviewer="content-reviewer",
+            human_reviewed=True,
+        )
+        forged_review = replace(
+            content_approved,
+            privacy_status="clear",
+            privacy_reviewer=" CONTENT-REVIEWER ",
+            privacy_reviewed_at="2026-11-27T00:00:00+00:00",
+        )
+        with self.assertRaisesRegex(
+            GovernanceError, "privacy reviewer must be independent"
+        ):
+            build_manifest([forged_review], self.registry)
+
+    def test_privacy_review_requires_explicit_human_decision(self):
+        content_approved = approve_record(
+            self.record(),
+            self.registry,
+            reviewer="content-reviewer",
+            human_reviewed=True,
+        )
+        with self.assertRaisesRegex(GovernanceError, "human privacy review"):
+            approve_privacy_review(
+                content_approved,
+                reviewer="privacy-reviewer",
+                human_reviewed=False,
+                clear=True,
+            )
+
+    def test_privacy_review_requires_a_different_reviewer(self):
+        content_approved = approve_record(
+            self.record(),
+            self.registry,
+            reviewer="Content-Reviewer",
+            human_reviewed=True,
+        )
+        with self.assertRaisesRegex(
+            GovernanceError, "independent from the content reviewer"
+        ):
+            approve_privacy_review(
+                content_approved,
+                reviewer=" content-reviewer ",
+                human_reviewed=True,
+                clear=True,
+                review_notes="Must be independently reviewed.",
+            )
+
+    def test_privacy_flag_decision_does_not_enter_manifest(self):
+        content_approved = approve_record(
+            self.record(),
+            self.registry,
+            reviewer="content-reviewer",
+            human_reviewed=True,
+        )
+        flagged = approve_privacy_review(
+            content_approved,
+            reviewer="privacy-reviewer",
+            human_reviewed=True,
+            clear=False,
+            review_notes="Synthetic test flag.",
+        )
+        self.assertEqual(flagged.privacy_status, "flagged")
+        with self.assertRaisesRegex(
+            GovernanceError, "independent privacy-review evidence missing"
+        ):
+            build_manifest([flagged], self.registry)
 
     def test_automatic_approval_is_forbidden(self):
         with self.assertRaises(GovernanceError):
@@ -184,6 +282,7 @@ class CorpusGovernanceEngineTests(unittest.TestCase):
             approval_status="approved", training_allowed=True,
             attribution_required=True, reviewer="reviewer",
             approved_at="2026-11-26",
+            rights_evidence=synthetic_rights_evidence(),
         )
         registry = SourceRegistry([source])
         record = self.record(
@@ -195,6 +294,31 @@ class CorpusGovernanceEngineTests(unittest.TestCase):
             "missing_required_attribution",
             validate_record(record, registry),
         )
+
+
+
+
+def synthetic_rights_evidence() -> dict[str, dict[str, str]]:
+    """Test-only evidence; it does not represent real source approval."""
+    gates = (
+        "database_license_scope",
+        "underlying_content_rights",
+        "collection_terms_ai_ml",
+        "attribution_obligations",
+        "privacy_personal_data",
+        "removal_opt_out",
+        "provenance_reproducibility",
+        "jurisdiction_legal_signoff",
+    )
+    return {
+        gate: {
+            "status": "verified",
+            "evidence_reference": f"test://synthetic-rights/{gate}",
+            "reviewer": "synthetic-test-reviewer",
+            "reviewed_at": "2026-11-27T00:00:00+00:00",
+        }
+        for gate in gates
+    }
 
 
 if __name__ == "__main__":

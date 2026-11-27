@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 
 import torch
@@ -12,6 +13,10 @@ from aviy.models.base_model import (
 )
 from aviy.tokenizer import ByteBPETokenizer
 from aviy.training import train_steps
+from aviy.training.authorization import (
+    TrainingAuthorization,
+    fingerprint_prepared_dataset,
+)
 
 
 class TokenizerTests(unittest.TestCase):
@@ -50,6 +55,52 @@ class TokenizerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ByteBPETokenizer.train([], vocabulary_size=300)
 
+    def test_dataset_tokenizer_rejects_missing_or_mismatched_authorization(self):
+        records = [
+            DatasetRecord(
+                text=f"Synthetic tokenizer authorization sample {index}",
+                source_id="fixture",
+                license="CC-BY-4.0",
+                approved_for_training=True,
+                source_uri="test://fixture",
+            )
+            for index in range(40)
+        ]
+        from aviy.data.pipeline import prepare_dataset
+
+        audited = prepare_dataset(records, allowed_licenses=["CC-BY-4.0"], seed=42)
+        valid_timestamp = datetime.now(UTC).isoformat()
+        fingerprint = fingerprint_prepared_dataset(audited)
+        invalid_authorizations = (
+            None,
+            TrainingAuthorization(
+                stage="supervised_finetuning",
+                dataset_fingerprint=fingerprint,
+                approver="synthetic-test",
+                authorized_at=valid_timestamp,
+                evidence_reference="test://wrong-stage",
+            ),
+            TrainingAuthorization(
+                stage="tokenizer_training",
+                dataset_fingerprint="0" * 64,
+                approver="synthetic-test",
+                authorized_at=valid_timestamp,
+                evidence_reference="test://stale-dataset",
+            ),
+        )
+
+        for authorization in invalid_authorizations:
+            with (
+                self.subTest(authorization=authorization),
+                self.assertRaises(PermissionError),
+            ):
+                    ByteBPETokenizer.train_from_prepared_dataset(
+                        audited,
+                        vocabulary_size=300,
+                        minimum_pair_frequency=1,
+                        authorization=authorization,
+                    )
+
     def test_trains_from_audited_training_split(self):
         records = [
             DatasetRecord(
@@ -74,8 +125,18 @@ class TokenizerTests(unittest.TestCase):
             from aviy.data.pipeline import prepare_dataset
 
             audited = prepare_dataset(records, allowed_licenses=["CC-BY-4.0"], seed=42)
+            authorization = TrainingAuthorization(
+                stage="tokenizer_training",
+                dataset_fingerprint=fingerprint_prepared_dataset(audited),
+                approver="synthetic-test",
+                authorized_at=datetime.now(UTC).isoformat(),
+                evidence_reference="test://synthetic-tokenizer-fixture",
+            )
             tokenizer = ByteBPETokenizer.train_from_prepared_dataset(
-                audited, vocabulary_size=300, minimum_pair_frequency=1
+                audited,
+                vocabulary_size=300,
+                minimum_pair_frequency=1,
+                authorization=authorization,
             )
             self.assertGreaterEqual(tokenizer.vocabulary_size, 256)
 
