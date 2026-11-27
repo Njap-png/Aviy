@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 import torch
 
@@ -72,6 +73,48 @@ class Phase9CPUTests(unittest.TestCase):
                 precision="int8",
             )
 
+    def test_bf16_is_rejected_when_cuda_device_lacks_support(self):
+        model = make_model()
+        with (
+            patch(
+                "aviy.training.engine.get_device",
+                return_value=torch.device("cuda"),
+            ),
+            patch("torch.cuda.is_bf16_supported", return_value=False),
+            self.assertRaisesRegex(ValueError, "does not support BF16"),
+        ):
+            train_steps(
+                model,
+                make_batches(),
+                steps=1,
+                device_name="cuda",
+                precision="bf16",
+            )
+
+        self.assertEqual(next(model.parameters()).device.type, "cpu")
+
+    def test_checkpoint_precision_mismatch_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "precision-checkpoint.pt"
+            train_steps(
+                make_model(),
+                make_batches(),
+                steps=1,
+                device_name="cpu",
+                precision="fp32",
+                checkpoint_path=checkpoint,
+            )
+
+            with self.assertRaisesRegex(ValueError, "precision does not match"):
+                train_steps(
+                    make_model(),
+                    make_batches(),
+                    steps=1,
+                    device_name="cpu",
+                    precision="auto",
+                    resume_from_checkpoint=checkpoint,
+                )
+
 
 @unittest.skipUnless(torch.cuda.is_available(), "CUDA GPU is not available")
 class Phase9CUDATests(unittest.TestCase):
@@ -86,15 +129,20 @@ class Phase9CUDATests(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as directory:
                     checkpoint = Path(directory) / "cuda-smoke.pt"
                     model = make_model()
-                    first = train_steps(
-                        model,
-                        make_batches(),
-                        steps=2,
-                        device_name="cuda",
-                        seed=42,
-                        precision=precision,
-                        checkpoint_path=checkpoint,
-                    )
+                    with patch(
+                        "torch.cuda.reset_peak_memory_stats",
+                        wraps=torch.cuda.reset_peak_memory_stats,
+                    ) as reset_peak:
+                        first = train_steps(
+                            model,
+                            make_batches(),
+                            steps=2,
+                            device_name="cuda",
+                            seed=42,
+                            precision=precision,
+                            checkpoint_path=checkpoint,
+                        )
+                    reset_peak.assert_called_once_with(torch.device("cuda"))
                     self.assertTrue(checkpoint.is_file())
 
                     resumed = train_steps(

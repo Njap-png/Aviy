@@ -74,8 +74,23 @@ def load_checkpoint(
     scaler: Any = None,
     map_location: str | torch.device = "cpu",
     scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
+    expected_precision: str | None = None,
 ) -> dict[str, Any]:
     payload = load_verified_checkpoint(path, map_location=map_location)
+
+    if expected_precision is not None:
+        checkpoint_metadata = payload.get("metadata", {})
+        if not isinstance(checkpoint_metadata, dict):
+            raise ValueError("Checkpoint metadata is invalid.")
+        if (
+            "precision" in checkpoint_metadata
+            and checkpoint_metadata["precision"] != expected_precision
+        ):
+            raise ValueError(
+                "Checkpoint precision does not match requested precision: "
+                f"{checkpoint_metadata['precision']!r} != {expected_precision!r}."
+            )
+
     model.load_state_dict(payload["model"])
     optimizer.load_state_dict(payload["optimizer"])
 
@@ -150,7 +165,17 @@ def train_steps(
         raise ValueError("minimum_learning_rate_ratio must be in [0, 1]")
 
     device = get_device(device_name)
+    if (
+        device.type == "cuda"
+        and precision == "bf16"
+        and not torch.cuda.is_bf16_supported()
+    ):
+        raise ValueError("BF16 precision was requested but this CUDA device does not support BF16.")
+
     model.to(device)
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     scheduler = (
         warmup_cosine_scheduler(
@@ -199,6 +224,7 @@ def train_steps(
             optimizer=optimizer,
             scaler=scaler,
             scheduler=scheduler,
+            expected_precision=precision,
         )
         start_step = restored["step"]
         seed = restored["seed"]
