@@ -5,6 +5,7 @@ import json
 import pytest
 import torch
 
+import aviy.inference.runtime as runtime_module
 from aviy.inference.generation import GenerationConfig
 from aviy.inference.runtime import InferenceEngine, save_inference_artifact
 from aviy.models.base_model import AviyBaseLM, BaseModelConfig
@@ -139,3 +140,33 @@ def test_runtime_checks_tokenizer_vocabulary_compatibility():
     )
     with pytest.raises(ValueError, match="does not fit"):
         InferenceEngine(small_model, too_large)
+
+
+def test_runtime_passes_tokenizer_vocabulary_limit(monkeypatch):
+    model = AviyBaseLM(
+        BaseModelConfig(
+            vocab_size=300,
+            context_length=32,
+            d_model=16,
+            n_layers=1,
+            n_heads=2,
+            d_ff=32,
+        )
+    )
+    tokenizer = ByteBPETokenizer()
+    engine = InferenceEngine(model, tokenizer)
+    captured = {}
+
+    def fake_generate_tokens(
+        model, input_ids, config=None, *, allowed_vocab_size=None
+    ):
+        captured["allowed_vocab_size"] = allowed_vocab_size
+        next_token = torch.tensor([[65]], dtype=torch.long, device=input_ids.device)
+        return torch.cat((input_ids, next_token), dim=1)
+
+    monkeypatch.setattr(runtime_module, "generate_tokens", fake_generate_tokens)
+
+    result = engine.generate("A", GenerationConfig(max_new_tokens=1))
+
+    assert result == "A"
+    assert captured["allowed_vocab_size"] == tokenizer.vocabulary_size == 256

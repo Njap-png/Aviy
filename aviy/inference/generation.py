@@ -91,13 +91,31 @@ def generate_tokens(
     model: nn.Module,
     input_ids: torch.Tensor,
     config: GenerationConfig | None = None,
+    *,
+    allowed_vocab_size: int | None = None,
 ) -> torch.Tensor:
     settings = config or GenerationConfig()
     settings.validate()
+    if allowed_vocab_size is not None and (
+        isinstance(allowed_vocab_size, bool)
+        or not isinstance(allowed_vocab_size, int)
+        or allowed_vocab_size < 1
+    ):
+        raise ValueError("allowed_vocab_size must be a positive integer")
+    if (
+        allowed_vocab_size is not None
+        and settings.eos_token_id is not None
+        and settings.eos_token_id >= allowed_vocab_size
+    ):
+        raise ValueError("eos_token_id must be inside the allowed vocabulary")
     if input_ids.ndim != 2 or input_ids.shape[0] != 1:
         raise ValueError("Generation expects input_ids with shape [1, sequence]")
     if input_ids.shape[1] == 0:
         raise ValueError("Generation prompt cannot be empty")
+    if allowed_vocab_size is not None and (
+        torch.any(input_ids < 0) or torch.any(input_ids >= allowed_vocab_size)
+    ):
+        raise ValueError("input_ids contain token IDs outside the allowed vocabulary")
 
     device = next(model.parameters()).device
     generated = input_ids.to(device)
@@ -114,6 +132,17 @@ def generate_tokens(
             context = generated[:, -context_length:]
             logits = model(context)
             next_logits = logits[0, -1, :]
+            if allowed_vocab_size is not None:
+                if allowed_vocab_size > next_logits.numel():
+                    raise ValueError(
+                        "allowed_vocab_size exceeds the model output vocabulary"
+                    )
+                invalid_positions = torch.arange(
+                    next_logits.numel(), device=next_logits.device
+                ) >= allowed_vocab_size
+                next_logits = next_logits.masked_fill(
+                    invalid_positions, float("-inf")
+                )
             if settings.do_sample:
                 next_id = _sample_next_token(next_logits, settings, generator)
             else:

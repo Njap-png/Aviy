@@ -224,7 +224,12 @@ class InferenceEngine:
             dtype=torch.long,
             device=self.device,
         )
-        generated = generate_tokens(self.model, input_ids, config)
+        generated = generate_tokens(
+            self.model,
+            input_ids,
+            config,
+            allowed_vocab_size=self.tokenizer.vocabulary_size,
+        )
         new_ids = generated[0, len(prompt_ids) :].tolist()
         return self.tokenizer.decode_generated(new_ids)
 

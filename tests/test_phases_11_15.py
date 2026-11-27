@@ -564,3 +564,60 @@ def test_instruction_sft_rejects_invalid_training_settings(kwargs) -> None:
             dataset,
             **kwargs,
         )
+
+
+@pytest.mark.parametrize("do_sample", [False, True])
+def test_generation_masks_logits_outside_allowed_vocabulary(monkeypatch, do_sample):
+    model = make_model()
+
+    def fixed_forward(input_ids):
+        logits = torch.zeros(
+            (*input_ids.shape, 256), device=input_ids.device
+        )
+        logits[..., 200] = 1000.0
+        logits[..., 7] = 10.0
+        return logits
+
+    monkeypatch.setattr(model, "forward", fixed_forward)
+
+    output = generate_tokens(
+        model,
+        torch.tensor([[1, 2]], dtype=torch.long),
+        GenerationConfig(max_new_tokens=8, do_sample=do_sample, seed=42),
+        allowed_vocab_size=128,
+    )
+
+    generated_ids = output[0, 2:].tolist()
+    assert len(generated_ids) == 8
+    assert all(0 <= token_id < 128 for token_id in generated_ids)
+
+
+@pytest.mark.parametrize("invalid_limit", [0, -1, 257, True])
+def test_generation_rejects_invalid_allowed_vocabulary_limit(invalid_limit):
+    with pytest.raises(ValueError, match="allowed_vocab_size"):
+        generate_tokens(
+            make_model(),
+            torch.tensor([[1, 2]], dtype=torch.long),
+            GenerationConfig(max_new_tokens=1),
+            allowed_vocab_size=invalid_limit,
+        )
+
+
+def test_generation_rejects_eos_token_outside_allowed_vocabulary():
+    with pytest.raises(ValueError, match="eos_token_id"):
+        generate_tokens(
+            make_model(),
+            torch.tensor([[1, 2]], dtype=torch.long),
+            GenerationConfig(max_new_tokens=1, eos_token_id=200),
+            allowed_vocab_size=128,
+        )
+
+
+def test_generation_rejects_prompt_ids_outside_allowed_vocabulary():
+    with pytest.raises(ValueError, match="outside the allowed vocabulary"):
+        generate_tokens(
+            make_model(),
+            torch.tensor([[1, 200]], dtype=torch.long),
+            GenerationConfig(max_new_tokens=1),
+            allowed_vocab_size=128,
+        )
