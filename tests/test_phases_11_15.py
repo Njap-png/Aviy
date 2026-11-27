@@ -853,13 +853,13 @@ def test_generation_cache_validates_keys_and_values():
     cache = GenerationCache()
 
     with pytest.raises(TypeError, match="key must be a tuple"):
-        cache.put(["prompt"], (1, 2))
+        cache.put(cast(tuple[object, ...], ["prompt"]), (1, 2))
 
     with pytest.raises(TypeError, match="hashable"):
         cache.put(("prompt", []), (1, 2))
 
     with pytest.raises(TypeError, match="value must be a tuple"):
-        cache.put(("prompt",), [1, 2])
+        cache.put(("prompt",), cast(tuple[int, ...], [1, 2]))
 
     with pytest.raises(ValueError, match="non-negative integer"):
         cache.put(("prompt",), (1, -2))
